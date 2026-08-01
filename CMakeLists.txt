@@ -15,7 +15,7 @@ juce_add_plugin(GambleSynth
     PRODUCT_NAME   "GambleSynth"
     COMPANY_NAME   "HWCDealer"
     BUNDLE_ID      "com.hwcdealer.gamblesynth"
-    DESCRIPTION    "Pull the lever, get a synth patch."
+    DESCRIPTION    "A slot machine and Ogun inspired Synthesizer to get random seeded synth patches."
     IS_SYNTH       TRUE
     NEEDS_MIDI_INPUT  TRUE
     NEEDS_MIDI_OUTPUT FALSE
