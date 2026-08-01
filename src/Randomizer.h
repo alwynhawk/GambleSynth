@@ -9,7 +9,8 @@
 class Randomizer
 {
 public:
-    enum Archetype { Pad, Pluck, Bass, Lead, Bell, Stab, Keys, NumArchetypes };
+    enum Archetype { Pad, Pluck, Bass, Lead, Bell, Stab, Keys,
+                     Organ, Drone, Vox, Perc, Brass, NumArchetypes };
 
     // Public API: a roll is fully determined by its seed, so the same seed
     // always reproduces the same sound (given the same algorithm version).
@@ -36,19 +37,33 @@ public:
     {
         recentArch[1] = recentArch[0];
         recentArch[0] = p.archetypeName;
-        if (p.modifierName.isNotEmpty())
-            recentMod = p.modifierName;
+
+        const juce::String mod = primaryModifier (p);
+        if (mod.isNotEmpty())
+        {
+            recentMod[1] = recentMod[0];
+            recentMod[0] = mod;
+        }
     }
 
 private:
     juce::String recentArch[2];   // last two archetypes, freshest first
-    juce::String recentMod;       // last modifier that actually applied
+    juce::String recentMod[2];    // last two modifiers that actually applied
+
+    // A double twist is named "tape+clang", so comparing whole names let
+    // "tape+swell" follow "tape+clang" unchallenged — and tape is exactly the
+    // kind of modifier you notice twice in a row. Compare the leading one.
+    static juce::String primaryModifier (const Patch& p)
+    {
+        return p.modifierName.upToFirstOccurrenceOf ("+", false, false);
+    }
 
     bool tooSimilar (const Patch& p) const
     {
+        const juce::String mod = primaryModifier (p);
         return p.archetypeName == recentArch[0]
             || p.archetypeName == recentArch[1]
-            || (p.modifierName.isNotEmpty() && p.modifierName == recentMod);
+            || (mod.isNotEmpty() && (mod == recentMod[0] || mod == recentMod[1]));
     }
 
     std::mt19937 rng;                                   // seeded per roll
@@ -75,9 +90,15 @@ private:
             case Lead:  makeLead (p);  p.archetypeName = "Lead";  break;
             case Bell:  makeBell (p);  p.archetypeName = "Bell";  break;
             case Stab:  makeStab (p);  p.archetypeName = "Stab";  break;
-            default:    makeKeys (p);  p.archetypeName = "Keys";  break;
+            case Keys:  makeKeys (p);  p.archetypeName = "Keys";  break;
+            case Organ: makeOrgan (p); p.archetypeName = "Organ"; break;
+            case Drone: makeDrone (p); p.archetypeName = "Drone"; break;
+            case Vox:   makeVox (p);   p.archetypeName = "Vox";   break;
+            case Perc:  makePerc (p);  p.archetypeName = "Perc";  break;
+            default:    makeBrass (p); p.archetypeName = "Brass"; break;
         }
         applyModifier (p);
+        loosen (p);
 
         // Delay on the grid unless the roll wants it loose. Resolved against the
         // host tempo at play time (120 BPM in the standalone).
@@ -86,6 +107,38 @@ private:
 
         p.seed = (int) seed; p.chaos = false;
         return p;
+    }
+
+    // ---- Guard rails, loosened. Archetypes used to keep every roll well inside
+    // its comfort zone, which is why two rolls of the same family shared a
+    // silhouette. This pushes the continuous parameters out toward the edges and
+    // occasionally breaks the archetype's own structural rules outright. Not
+    // CHAOS — the audibility probe still rejects anything that lands mute — but
+    // enough that normal mode stops feeling supervised. ----
+    void loosen (Patch& p)
+    {
+        // Multiply by up to `oct` octaves in either direction.
+        auto spread = [this] (float& v, float lo, float hi, float oct)
+        {
+            v = juce::jlimit (lo, hi, v * std::exp2 (f (-oct, oct)));
+        };
+
+        spread (p.cutoff, 60.0f,  12000.0f, 0.9f);
+        spread (p.ampD,   0.01f,  3.0f,     0.7f);
+        spread (p.ampR,   0.02f,  3.5f,     0.7f);
+        spread (p.modD,   0.01f,  3.0f,     0.7f);
+        spread (p.lfoRate, 0.03f, 18.0f,    0.6f);
+
+        p.resonance    = juce::jlimit (0.0f,  0.85f, p.resonance + f (-0.12f, 0.28f));
+        p.filterEnvAmt = juce::jlimit (-1.0f, 1.0f,  p.filterEnvAmt + f (-0.25f, 0.25f));
+        p.stereoWidth  = juce::jlimit (0.0f,  1.0f,  p.stereoWidth + f (-0.2f, 0.2f));
+
+        // Structural rule-breaking, rare enough to stay a surprise.
+        if (chance (0.15f)) { p.oscMode = i (0, 3); p.fmAmount = f (0.15f, 0.8f); }
+        if (chance (0.12f)) { p.unisonVoices = i (1, 7); p.unisonDetune = f (5.0f, 35.0f); }
+        if (chance (0.10f)) p.osc[2].semi += chance (0.5f) ? 12 : -12;
+        if (chance (0.08f)) p.filterType = i (0, 2);
+        if (chance (0.10f)) p.subLevel = f (0.2f, 0.6f);
     }
 
     // ---- Modifiers: a twist applied *after* the archetype. This is what stops
@@ -262,7 +315,7 @@ private:
         p.subWave = chance (0.5f) ? 3 : 0; p.subLevel = f (0.0f, 0.6f); p.noiseLevel = f (0.0f, 0.4f);
         p.pulseWidth = f (0.1f, 0.9f); p.pwmDepth = f (0.0f, 0.8f);
         p.velToFilter = f (0.0f, 1.0f); p.velToAmp = f (0.0f, 1.0f);
-        p.voiceMode = i (0, 2); p.glideTime = chance (0.5f) ? f (0.0f, 0.3f) : 0.0f;
+        p.voiceMode = i (0, 2); p.glideTime = chance (0.5f) ? glideAmount() : 0.0f;
         p.foldAmount = chance (0.4f) ? f (0.0f, 0.9f) : 0.0f;
         p.crushBits  = chance (0.4f) ? f (2.0f, 12.0f) : 16.0f;
         p.crushRate  = chance (0.4f) ? f (1.0f, 20.0f) : 1.0f;
@@ -369,6 +422,15 @@ private:
         o.fine = (semis - (float) o.semi) * 100.0f;
     }
 
+    // Portamento length. A flat range made every glide patch sound like the same
+    // slow bend, so this is cubed: most slides are a quick smear you barely
+    // notice, a few are a real slide.
+    float glideAmount()
+    {
+        const float u = f (0.0f, 1.0f);
+        return 0.004f + u * u * u * 0.34f;
+    }
+
     void setThreeOsc (Patch& p, int w0, int w1, int w2)
     {
         // Wider detune spread = lusher, more beating between oscillators.
@@ -442,7 +504,7 @@ private:
         p.unisonVoices = 1;                                                    // tight = punch
         p.subWave = chance (0.4f) ? 3 : 0; p.subLevel = f (0.3f, 0.6f); p.noiseLevel = f (0.0f, 0.04f);
         p.velToAmp = f (0.2f, 0.5f); p.velToFilter = f (0.3f, 0.6f);
-        if (chance (0.6f)) { p.voiceMode = chance (0.5f) ? 1 : 2; p.glideTime = chance (0.6f) ? f (0.02f, 0.12f) : 0.0f; }
+        if (chance (0.6f)) { p.voiceMode = chance (0.5f) ? 1 : 2; p.glideTime = chance (0.6f) ? glideAmount() : 0.0f; }
         pickFilter (p, 0.35f, 0.25f, 0.0f, 0.0f);
         p.drive = f (0.15f, 0.45f); p.compAmount = f (0.2f, 0.5f);
         pickFx (p, 0.05f, 0.05f, 0.15f, 0.15f);   // ladder weight + acid
@@ -463,7 +525,7 @@ private:
         p.subLevel = f (0.0f, 0.15f); p.noiseLevel = 0.0f;
         p.pulseWidth = f (0.35f, 0.65f); p.pwmDepth = f (0.1f, 0.4f);
         p.velToAmp = f (0.2f, 0.5f); p.velToFilter = f (0.2f, 0.5f);
-        if (chance (0.5f)) { p.voiceMode = chance (0.4f) ? 1 : 2; p.glideTime = chance (0.7f) ? f (0.03f, 0.15f) : 0.0f; }
+        if (chance (0.5f)) { p.voiceMode = chance (0.4f) ? 1 : 2; p.glideTime = chance (0.7f) ? glideAmount() : 0.0f; }
         pickFilter (p, 0.30f, 0.20f, 0.08f, 0.0f);
         p.drive = f (0.1f, 0.4f); p.compAmount = f (0.1f, 0.35f);
         pickFx (p, 0.20f, 0.18f, 0.08f, 0.12f);
@@ -538,5 +600,109 @@ private:
         pickFilter (p, 0.25f, 0.0f, 0.0f, 0.08f);
         p.drive = f (0.05f, 0.25f); p.compAmount = f (0.1f, 0.35f);
         pickFx (p, 0.25f, 0.10f, 0.05f, 0.05f);
+    }
+
+    // Drawbars: harmonic partials, instant on, instant off, no filter theatre.
+    void makeOrgan (Patch& p)
+    {
+        setThreeOsc (p, chance (0.5f) ? 0 : 3, 0, chance (0.5f) ? 0 : 3);
+        setRatio (p.osc[1], chance (0.5f) ? 2.0f : 3.0f);
+        setRatio (p.osc[2], chance (0.4f) ? 4.0f : (chance (0.5f) ? 6.0f : 8.0f));
+        p.osc[1].level = f (0.3f, 0.7f); p.osc[2].level = f (0.15f, 0.5f);
+        p.ampA = f (0.001f, 0.008f); p.ampD = f (0.05f, 0.2f);
+        p.ampS = f (0.85f, 1.0f);     p.ampR = f (0.02f, 0.12f);
+        p.filterType = 0; p.cutoff = f (2500.f, 9000.f); p.filterEnvAmt = f (0.0f, 0.1f);
+        p.lfoDest = 1; p.lfoRate = f (4.0f, 7.5f); p.lfoDepth = f (0.0f, 0.25f);  // leslie-ish
+        p.chorusMix = f (0.3f, 0.7f);
+        p.reverbMix = f (0.15f, 0.4f); p.reverbSize = f (0.4f, 0.8f);
+        p.velToAmp = f (0.0f, 0.2f); p.velToFilter = f (0.0f, 0.2f);
+        p.unisonVoices = 1;
+        pickFilter (p, 0.15f, 0.0f, 0.10f, 0.0f);
+        p.drive = f (0.05f, 0.35f); p.compAmount = f (0.1f, 0.4f);
+        pickFx (p, 0.30f, 0.12f, 0.05f, 0.08f);
+    }
+
+    // Everything slow: takes seconds to arrive and seconds to leave.
+    void makeDrone (Patch& p)
+    {
+        setThreeOsc (p, 2, chance (0.5f) ? 1 : 2, 0);
+        setRatio (p.osc[1], chance (0.5f) ? 0.5f : f (1.002f, 1.02f));   // octave down or beating
+        p.osc[2].semi = chance (0.5f) ? -12 : 0;
+        p.ampA = f (1.0f, 2.8f); p.ampD = f (0.8f, 2.0f);
+        p.ampS = f (0.8f, 1.0f); p.ampR = f (1.5f, 3.5f);
+        p.modA = f (1.0f, 2.5f); p.modD = f (1.0f, 2.5f); p.modS = f (0.5f, 0.9f);
+        p.filterType = 0; p.cutoff = f (300.f, 2000.f); p.filterEnvAmt = f (0.2f, 0.6f);
+        p.lfoDest = 1; p.lfoRate = f (0.03f, 0.4f); p.lfoDepth = f (0.3f, 0.8f);
+        p.unisonVoices = chance (0.5f) ? 5 : 7; p.unisonDetune = f (10.0f, 30.0f);
+        p.subLevel = f (0.1f, 0.4f); p.noiseLevel = f (0.0f, 0.08f);
+        p.stereoWidth = f (0.8f, 1.0f); p.chorusMix = f (0.3f, 0.6f);
+        p.reverbSize = f (0.85f, 0.98f); p.reverbMix = f (0.4f, 0.6f);
+        p.velToAmp = f (0.0f, 0.25f);
+        pickFilter (p, 0.25f, 0.0f, 0.20f, 0.0f);
+        p.drive = f (0.0f, 0.2f); p.compAmount = f (0.0f, 0.3f);
+        pickFx (p, 0.30f, 0.15f, 0.0f, 0.05f);
+    }
+
+    // Formant-forward and breathy — the filter is the instrument here.
+    void makeVox (Patch& p)
+    {
+        setThreeOsc (p, 2, 2, chance (0.5f) ? 1 : 2);
+        p.osc[1].fine = f (-12.0f, 12.0f);
+        p.ampA = f (0.03f, 0.25f); p.ampD = f (0.2f, 0.6f);
+        p.ampS = f (0.6f, 0.9f);   p.ampR = f (0.2f, 0.7f);
+        p.filterModel = 3;                                  // formant, always
+        p.filterMorph = f (0.0f, 1.0f);
+        p.cutoff = f (500.f, 1600.f); p.resonance = f (0.3f, 0.6f);
+        p.filterEnvAmt = f (0.0f, 0.3f); p.keytrack = f (0.2f, 0.6f);
+        p.lfoDest = 0; p.lfoRate = f (4.5f, 6.5f); p.lfoDepth = f (0.1f, 0.35f);  // vibrato
+        p.noiseLevel = f (0.03f, 0.15f);                     // breath
+        p.unisonVoices = chance (0.5f) ? 3 : 1; p.unisonDetune = f (5.0f, 14.0f);
+        p.reverbMix = f (0.25f, 0.5f); p.reverbSize = f (0.5f, 0.85f);
+        p.velToAmp = f (0.3f, 0.7f);
+        p.drive = f (0.0f, 0.2f); p.compAmount = f (0.1f, 0.4f);
+        pickFx (p, 0.20f, 0.15f, 0.05f, 0.05f);
+    }
+
+    // Struck and gone: no sustain, inharmonic, bright.
+    void makePerc (Patch& p)
+    {
+        setThreeOsc (p, chance (0.5f) ? 0 : 2, 0, 4);        // osc3 is noise
+        setRatio (p.osc[1], f (1.3f, 11.0f));
+        p.osc[2].level = f (0.1f, 0.45f);                    // the hit's noise transient
+        p.oscMode = chance (0.5f) ? 3 : 1;
+        p.fmAmount = f (0.3f, 0.9f);
+        p.ampA = f (0.0005f, 0.004f); p.ampD = f (0.05f, 0.45f);
+        p.ampS = 0.0f;                p.ampR = f (0.05f, 0.35f);
+        p.modA = 0.001f; p.modD = f (0.02f, 0.2f); p.modS = 0.0f;
+        p.filterType = chance (0.3f) ? 2 : 0;
+        p.cutoff = f (1200.f, 9000.f); p.filterEnvAmt = f (0.3f, 0.9f);
+        p.resonance = f (0.1f, 0.5f);
+        p.unisonVoices = 1; p.subLevel = f (0.0f, 0.35f);
+        p.reverbMix = f (0.1f, 0.35f); p.reverbSize = f (0.3f, 0.7f);
+        p.velToAmp = f (0.5f, 0.9f); p.velToFilter = f (0.4f, 0.8f);
+        pickFilter (p, 0.15f, 0.10f, 0.0f, 0.30f);           // comb = struck metal
+        p.drive = f (0.1f, 0.45f); p.compAmount = f (0.2f, 0.55f);
+        pickFx (p, 0.08f, 0.10f, 0.20f, 0.12f);
+    }
+
+    // Saw stack with a filter that swells into the note.
+    void makeBrass (Patch& p)
+    {
+        setThreeOsc (p, 2, 2, chance (0.5f) ? 2 : 3);
+        p.osc[1].fine = f (-14.0f, 14.0f);
+        p.ampA = f (0.04f, 0.2f); p.ampD = f (0.15f, 0.5f);
+        p.ampS = f (0.6f, 0.9f);  p.ampR = f (0.1f, 0.4f);
+        p.modA = f (0.03f, 0.18f); p.modD = f (0.2f, 0.7f); p.modS = f (0.3f, 0.7f);
+        p.filterType = 0; p.cutoff = f (600.f, 2200.f);
+        p.filterEnvAmt = f (0.5f, 0.95f);                    // the swell
+        p.resonance = f (0.15f, 0.45f); p.keytrack = f (0.3f, 0.8f);
+        p.unisonVoices = chance (0.5f) ? 3 : 5; p.unisonDetune = f (6.0f, 18.0f);
+        p.subLevel = f (0.0f, 0.2f);
+        p.stereoWidth = f (0.5f, 0.9f);
+        p.reverbMix = f (0.2f, 0.4f); p.reverbSize = f (0.4f, 0.75f);
+        p.velToAmp = f (0.35f, 0.75f); p.velToFilter = f (0.4f, 0.8f);
+        pickFilter (p, 0.35f, 0.15f, 0.0f, 0.0f);
+        p.drive = f (0.15f, 0.5f); p.compAmount = f (0.2f, 0.5f);
+        pickFx (p, 0.15f, 0.15f, 0.05f, 0.10f);
     }
 };
