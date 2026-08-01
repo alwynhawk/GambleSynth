@@ -1,0 +1,45 @@
+# Builds the Windows standalone + VST3 on GitHub's runners, because the project
+# is developed on Linux and there's no cross-compiler for a proper MSVC build.
+# Push this repo to GitHub and the artifacts appear under each run.
+name: Build (Windows)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:        # lets you trigger a build by hand from the Actions tab
+
+jobs:
+  windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -B build -G "Visual Studio 17 2022" -A x64
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Run the test suite
+        shell: bash
+        run: |
+          set -e
+          EXE="build/RenderTest_artefacts/Release/RenderTest.exe"
+          for mode in clicktest fxtest filtertest monotest synctest aliastest locktest devtest varietytest; do
+            echo "--- $mode ---"
+            "$EXE" "$mode"
+          done
+
+      - name: Collect the build
+        shell: bash
+        run: |
+          mkdir -p dist/GambleSynth
+          cp -r build/GambleSynth_artefacts/Release/VST3/GambleSynth.vst3 dist/GambleSynth/
+          cp build/GambleSynth_artefacts/Release/Standalone/GambleSynth.exe dist/GambleSynth/
+          cp README.md dist/GambleSynth/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GambleSynth-windows
+          path: dist/

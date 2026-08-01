@@ -1,0 +1,14 @@
+# Build output (JUCE is fetched here too — hundreds of MB)
+build/
+cmake-build-*/
+
+# Render + screenshot artefacts produced by RenderTest
+*.wav
+ui_*.png
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
