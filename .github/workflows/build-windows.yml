@@ -15,8 +15,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Print what the runner actually has, so a future image change explains
+      # itself instead of just failing with "could not find any instance".
+      - name: Toolchain
+        shell: pwsh
+        run: |
+          cmake --version
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (Test-Path $vswhere) { & $vswhere -latest -products * -property displayName }
+          else { Write-Host "vswhere not found" }
+
+      # No -G/-A: let CMake pick whichever Visual Studio the image ships with.
+      # Pinning the generator string broke the moment the runner image moved on.
       - name: Configure
-        run: cmake -B build -G "Visual Studio 17 2022" -A x64
+        run: cmake -B build
 
       - name: Build
         run: cmake --build build --config Release --parallel
