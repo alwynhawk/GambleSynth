@@ -582,24 +582,84 @@ private:
 
     void makeKeys (Patch& p)
     {
-        setThreeOsc (p, 2, 1, chance (0.5f) ? 0 : 2);
-        p.ampA = f (0.005f, 0.05f); p.ampD = f (0.3f, 0.8f); p.ampS = f (0.3f, 0.6f); p.ampR = f (0.2f, 0.5f);
+        // "Keys" is a family, not a sound. Rolling one recipe made every keys
+        // patch an electric piano wearing the same chorus — so each branch here
+        // is a different instrument, not a different setting.
         p.filterType = 0;
-        p.cutoff = f (900.f, 3000.f);
-        p.filterEnvAmt = f (0.2f, 0.5f);
         p.modD = f (0.3f, 0.7f); p.modS = f (0.1f, 0.4f);
-        p.reverbMix = f (0.15f, 0.35f); p.reverbSize = f (0.4f, 0.7f);
-        p.delayMix = chance (0.4f) ? f (0.1f, 0.25f) : 0.0f; p.delayTime = f (0.3f, 0.5f); p.delayFb = f (0.2f, 0.4f);
-        p.chorusMix = f (0.25f, 0.5f);                                        // e-piano shimmer
-        if (chance (0.45f)) { p.oscMode = 3; p.fmAmount = f (0.1f, 0.35f);
-                              // near 2:1 is the e-piano; the rest is other keys
-                              setRatio (p.osc[1], chance (0.5f) ? f (1.96f, 2.04f) : f (1.2f, 4.5f)); }
-        p.unisonVoices = chance (0.4f) ? 3 : 1; p.unisonDetune = f (5.0f, 12.0f);
-        p.subLevel = f (0.0f, 0.15f); p.noiseLevel = 0.0f;
-        p.velToAmp = f (0.4f, 0.8f); p.velToFilter = f (0.3f, 0.6f);
-        pickFilter (p, 0.25f, 0.0f, 0.0f, 0.08f);
-        p.drive = f (0.05f, 0.25f); p.compAmount = f (0.1f, 0.35f);
-        pickFx (p, 0.25f, 0.10f, 0.05f, 0.05f);
+        p.reverbMix = f (0.12f, 0.35f); p.reverbSize = f (0.35f, 0.7f);
+        p.delayMix = chance (0.35f) ? f (0.1f, 0.25f) : 0.0f;
+        p.delayTime = f (0.25f, 0.5f); p.delayFb = f (0.2f, 0.4f);
+        p.unisonVoices = 1; p.noiseLevel = 0.0f;
+
+        switch (i (0, 4))
+        {
+            case 0:     // electric piano — FM at 2:1, soft, chorused
+                setThreeOsc (p, 0, 0, chance (0.5f) ? 0 : 1);
+                p.oscMode = 3; p.fmAmount = f (0.12f, 0.4f);
+                setRatio (p.osc[1], f (1.97f, 2.03f));
+                p.ampA = f (0.002f, 0.012f); p.ampD = f (0.5f, 1.4f);
+                p.ampS = f (0.15f, 0.4f);    p.ampR = f (0.3f, 0.8f);
+                p.cutoff = f (1500.f, 4500.f); p.filterEnvAmt = f (0.1f, 0.4f);
+                p.chorusMix = f (0.3f, 0.6f);
+                p.velToAmp = f (0.5f, 0.85f); p.velToFilter = f (0.3f, 0.6f);
+                p.drive = f (0.02f, 0.18f);
+                break;
+
+            case 1:     // clav — short, bright, resonant, bone dry
+                setThreeOsc (p, 2, 3, 2);
+                p.ampA = f (0.001f, 0.006f); p.ampD = f (0.12f, 0.35f);
+                p.ampS = f (0.0f, 0.15f);    p.ampR = f (0.08f, 0.2f);
+                p.cutoff = f (800.f, 2500.f); p.resonance = f (0.3f, 0.6f);
+                p.filterEnvAmt = f (0.4f, 0.85f);
+                p.chorusMix = f (0.0f, 0.12f);
+                p.velToAmp = f (0.4f, 0.75f); p.velToFilter = f (0.5f, 0.9f);
+                p.drive = f (0.2f, 0.5f);
+                break;
+
+            case 2:     // music box — high inharmonic partial, tiny and bright
+                setThreeOsc (p, 0, 0, 0);
+                p.oscMode = 3; p.fmAmount = f (0.08f, 0.25f);
+                setRatio (p.osc[1], f (3.5f, 8.0f));
+                p.ampA = f (0.001f, 0.004f); p.ampD = f (0.25f, 0.8f);
+                p.ampS = 0.0f;               p.ampR = f (0.3f, 0.9f);
+                p.cutoff = f (3000.f, 8000.f); p.filterEnvAmt = f (0.0f, 0.2f);
+                p.chorusMix = f (0.0f, 0.15f);
+                p.reverbMix = f (0.3f, 0.5f);
+                p.velToAmp = f (0.5f, 0.9f);
+                p.drive = f (0.0f, 0.1f);
+                break;
+
+            case 3:     // wurly — FM off the octave, tremolo, a bit of grit
+                setThreeOsc (p, 0, 3, 0);
+                p.oscMode = 3; p.fmAmount = f (0.25f, 0.6f);
+                setRatio (p.osc[1], f (1.4f, 2.6f));
+                p.ampA = f (0.002f, 0.015f); p.ampD = f (0.4f, 1.0f);
+                p.ampS = f (0.2f, 0.45f);    p.ampR = f (0.2f, 0.6f);
+                p.cutoff = f (1200.f, 3500.f); p.filterEnvAmt = f (0.15f, 0.45f);
+                p.lfoDest = 2; p.lfoRate = f (4.0f, 7.0f); p.lfoDepth = f (0.2f, 0.5f);
+                p.chorusMix = f (0.1f, 0.35f);
+                p.velToAmp = f (0.45f, 0.8f);
+                p.drive = f (0.15f, 0.45f);
+                break;
+
+            default:    // harpsichord / plucked — no sustain at all, sometimes sync
+                setThreeOsc (p, 2, 2, 3);
+                if (chance (0.35f)) { p.oscMode = 2; p.fmAmount = f (0.15f, 0.45f); }
+                p.ampA = f (0.001f, 0.005f); p.ampD = f (0.15f, 0.5f);
+                p.ampS = f (0.0f, 0.1f);     p.ampR = f (0.1f, 0.3f);
+                p.cutoff = f (1500.f, 5000.f); p.resonance = f (0.1f, 0.35f);
+                p.filterEnvAmt = f (0.3f, 0.7f);
+                p.chorusMix = f (0.0f, 0.1f);
+                p.velToAmp = f (0.45f, 0.85f); p.velToFilter = f (0.4f, 0.8f);
+                p.drive = f (0.05f, 0.3f);
+                break;
+        }
+
+        p.subLevel = f (0.0f, 0.15f);
+        pickFilter (p, 0.25f, 0.05f, 0.05f, 0.10f);
+        p.compAmount = f (0.1f, 0.35f);
+        pickFx (p, 0.20f, 0.10f, 0.08f, 0.05f);
     }
 
     // Drawbars: harmonic partials, instant on, instant off, no filter theatre.
