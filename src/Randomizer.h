@@ -175,12 +175,12 @@ private:
 
             case 9:   // clang — ring mod against an inharmonic partner
                 p.oscMode = 1; p.fmAmount = f (0.5f, 0.85f);
-                p.osc[1].semi = chance (0.5f) ? 6 : (chance (0.5f) ? 13 : 18);
+                setRatio (p.osc[1], f (1.3f, 9.0f));
                 return "clang";
 
             case 10:  // growl — hard FM index, inharmonic modulator
                 p.oscMode = 3; p.fmAmount = f (0.5f, 0.9f);
-                p.osc[1].semi = chance (0.5f) ? 7 : (chance (0.5f) ? 11 : 14);
+                setRatio (p.osc[1], f (1.2f, 5.0f));
                 return "growl";
 
             case 11:  // cathedral — huge space
@@ -358,6 +358,17 @@ private:
             p.foldAmount = f (0.2f, 0.6f);
     }
 
+    // FM, ring and sync timbre is decided by the *frequency ratio* between the
+    // two oscillators — so it has to be continuous. Picking from a few integer
+    // semitones gives you a few recognisable sounds and nothing in between.
+    // semi + fine encodes any ratio exactly (fine is cents).
+    static void setRatio (Patch::Osc& o, float ratio)
+    {
+        const float semis = 12.0f * std::log2 (juce::jmax (0.05f, ratio));
+        o.semi = juce::roundToInt (semis);
+        o.fine = (semis - (float) o.semi) * 100.0f;
+    }
+
     void setThreeOsc (Patch& p, int w0, int w1, int w2)
     {
         // Wider detune spread = lusher, more beating between oscillators.
@@ -425,7 +436,8 @@ private:
         p.reverbMix = f (0.0f, 0.12f); p.reverbSize = 0.3f;
         p.delayMix = 0.0f;
         p.stereoWidth = f (0.1f, 0.35f); p.chorusMix = f (0.0f, 0.15f);      // tight & centred = punch
-        if (chance (0.3f)) { p.oscMode = 3; p.fmAmount = f (0.15f, 0.45f); p.osc[1].semi = 7; } // FM growl
+        if (chance (0.3f)) { p.oscMode = 3; p.fmAmount = f (0.15f, 0.45f);
+                            setRatio (p.osc[1], f (1.4f, 3.2f)); }                  // FM growl
         else if (chance (0.3f)) { p.oscMode = 1; p.fmAmount = f (0.3f, 0.6f); }                 // ring dirt
         p.unisonVoices = 1;                                                    // tight = punch
         p.subWave = chance (0.4f) ? 3 : 0; p.subLevel = f (0.3f, 0.6f); p.noiseLevel = f (0.0f, 0.04f);
@@ -459,12 +471,21 @@ private:
 
     void makeBell (Patch& p)
     {
-        // Bells love FM: sine carrier + inharmonic modulator = classic DX7 tone.
-        setThreeOsc (p, 0, 0, 0);
-        p.osc[1].semi = chance (0.5f) ? 7 : (chance (0.5f) ? 14 : 3);   // inharmonic ratio
-        p.oscMode = 3; p.fmAmount = f (0.25f, 0.8f);
-        p.osc[2].semi = chance (0.5f) ? 12 : 19; p.osc[2].level = f (0.1f, 0.3f);
-        p.ampA = f (0.001f, 0.01f); p.ampD = f (0.6f, 1.8f); p.ampS = f (0.0f, 0.1f); p.ampR = f (0.5f, 1.5f);
+        // A bell is inharmonic partials under a struck envelope, and the
+        // character is the carrier:modulator ratio — so that is rolled
+        // continuously. Integer ratios sound like an organ; the space between
+        // them is where the interesting metal lives.
+        setThreeOsc (p, chance (0.25f) ? 1 : 0, 0, chance (0.3f) ? 1 : 0);
+        setRatio (p.osc[1], f (1.15f, 7.5f));
+        setRatio (p.osc[2], f (2.0f, 9.0f));
+        p.osc[2].level = f (0.05f, 0.3f);
+
+        p.oscMode = chance (0.25f) ? 1 : 3;      // ring mod is a different metal
+        p.fmAmount = f (0.25f, 0.85f);
+
+        // Struck-and-ringing, but the ring is anything from a tap to a gong.
+        p.ampA = f (0.001f, 0.02f); p.ampD = f (0.35f, 2.6f);
+        p.ampS = f (0.0f, 0.12f);   p.ampR = f (0.35f, 2.0f);
         p.filterType = 0;
         p.cutoff = f (3000.f, 7000.f);
         p.filterEnvAmt = f (0.0f, 0.2f);
@@ -508,7 +529,9 @@ private:
         p.reverbMix = f (0.15f, 0.35f); p.reverbSize = f (0.4f, 0.7f);
         p.delayMix = chance (0.4f) ? f (0.1f, 0.25f) : 0.0f; p.delayTime = f (0.3f, 0.5f); p.delayFb = f (0.2f, 0.4f);
         p.chorusMix = f (0.25f, 0.5f);                                        // e-piano shimmer
-        if (chance (0.45f)) { p.oscMode = 3; p.fmAmount = f (0.1f, 0.35f); p.osc[1].semi = 12; } // FM e-piano
+        if (chance (0.45f)) { p.oscMode = 3; p.fmAmount = f (0.1f, 0.35f);
+                              // near 2:1 is the e-piano; the rest is other keys
+                              setRatio (p.osc[1], chance (0.5f) ? f (1.96f, 2.04f) : f (1.2f, 4.5f)); }
         p.unisonVoices = chance (0.4f) ? 3 : 1; p.unisonDetune = f (5.0f, 12.0f);
         p.subLevel = f (0.0f, 0.15f); p.noiseLevel = 0.0f;
         p.velToAmp = f (0.4f, 0.8f); p.velToFilter = f (0.3f, 0.6f);

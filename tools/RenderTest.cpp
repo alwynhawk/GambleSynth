@@ -94,6 +94,143 @@ int main (int argc, char** argv)
         return 0;
     }
 
+    // --- Similarity: how many of N rolls are actually different sounds?
+    //     Fingerprints each roll (log-band spectrum + envelope shape) and
+    //     reports the near-duplicate pairs. Turns "feels samey" into a number.
+    //     Usage: similaritytest [Bell|Pad|...]  (default: whatever comes up) ---
+    bool simTest = false;
+    juce::String wantArchetype;
+    for (int a = 1; a < argc; ++a)
+    {
+        const juce::String arg (argv[a]);
+        if (arg == "similaritytest") simTest = true;
+        else if (arg.startsWithIgnoreCase ("arch=")) wantArchetype = arg.fromFirstOccurrenceOf ("=", false, false);
+    }
+    if (simTest)
+    {
+        proc.setPlayConfigDetails (0, 2, sr, block);
+        proc.prepareToPlay (sr, block);
+
+        constexpr int fftOrder = 12, fftSize = 1 << fftOrder;
+        juce::dsp::FFT fft (fftOrder);
+        constexpr int numBands = 20, numSegs = 6;
+
+        const int total = (int) (sr * 1.5);
+        juce::AudioBuffer<float> out (2, total), work (2, block);
+
+        struct Print { juce::String label; int seed; std::vector<float> v; };
+        std::vector<Print> prints;
+        juce::StringArray structures;
+
+        const int wanted = 24;
+        for (unsigned seed = 1; (int) prints.size() < wanted && seed < 4000; ++seed)
+        {
+            proc.rollSeed (seed);
+            if (wantArchetype.isNotEmpty()
+                && ! proc.getPatch().archetypeName.equalsIgnoreCase (wantArchetype))
+                continue;
+
+            const auto& pat = proc.getPatch();
+            const juce::String label = pat.archetypeName
+                                     + (pat.modifierName.isEmpty() ? juce::String() : "+" + pat.modifierName);
+
+            for (int b = 0; b < 4; ++b) { work.clear(); juce::MidiBuffer e; proc.processBlock (work, e); }
+
+            out.clear();
+            for (int sPos = 0; sPos < total; sPos += block)
+            {
+                const int n = juce::jmin (block, total - sPos);
+                work.clear();
+                juce::MidiBuffer midi;
+                if (sPos == 0) midi.addEvent (juce::MidiMessage::noteOn (1, 60, 0.9f), 0);
+                juce::AudioBuffer<float> sub (work.getArrayOfWritePointers(), 2, 0, n);
+                proc.processBlock (sub, midi);
+                for (int ch = 0; ch < 2; ++ch) out.copyFrom (ch, sPos, work, ch, 0, n);
+            }
+
+            // Spectrum just after the attack, in log-spaced bands.
+            std::vector<float> fd ((size_t) fftSize * 2, 0.0f);
+            const int from = (int) (sr * 0.15);
+            for (int n = 0; n < fftSize; ++n)
+            {
+                const float win = 0.5f - 0.5f * std::cos (juce::MathConstants<float>::twoPi
+                                                          * (float) n / (float) (fftSize - 1));
+                fd[(size_t) n] = out.getSample (0, from + n) * win;
+            }
+            fft.performFrequencyOnlyForwardTransform (fd.data());
+
+            std::vector<float> v ((size_t) (numBands + numSegs), 0.0f);
+            const double binHz = sr / fftSize;
+            for (int b = 0; b < numBands; ++b)
+            {
+                const double lo = 100.0 * std::pow (12000.0 / 100.0, (double) b / numBands);
+                const double hi = 100.0 * std::pow (12000.0 / 100.0, (double) (b + 1) / numBands);
+                double e = 0.0;
+                for (int k = (int) (lo / binHz); k < (int) (hi / binHz) && k < fftSize / 2; ++k)
+                    e += (double) fd[(size_t) k] * fd[(size_t) k];
+                v[(size_t) b] = (float) std::sqrt (e);
+            }
+            // Envelope shape matters as much as spectrum for "is this the same sound".
+            for (int sgn = 0; sgn < numSegs; ++sgn)
+                v[(size_t) (numBands + sgn)] =
+                    out.getRMSLevel (0, sgn * total / numSegs, total / numSegs) * 2.0f;
+
+            float norm = 0.0f;
+            for (float x : v) norm += x * x;
+            norm = std::sqrt (juce::jmax (1.0e-9f, norm));
+            for (auto& x : v) x /= norm;
+
+            // What the ear actually categorises by: the discrete structure, not
+            // the continuous trim. Two rolls sharing this key are "that sound
+            // again" however different their decay or cutoff happen to be.
+            const float ratioSemis = (float) pat.osc[1].semi + pat.osc[1].fine * 0.01f;
+            structures.addIfNotAlreadyThere (
+                  juce::String (pat.oscMode)
+                + "/" + juce::String (pat.osc[0].wave) + juce::String (pat.osc[1].wave)
+                      + juce::String (pat.osc[2].wave)
+                + "/r" + juce::String (juce::roundToInt (ratioSemis * 2.0f) / 2.0f, 1)
+                + "/f" + juce::String (pat.filterModel)
+                + "/" + pat.modifierName);
+
+            prints.push_back ({ label, pat.seed, std::move (v) });
+        }
+
+        auto distance = [] (const Print& a, const Print& b)
+        {
+            float dot = 0.0f;
+            for (size_t k = 0; k < a.v.size(); ++k) dot += a.v[k] * b.v[k];
+            return 1.0f - juce::jlimit (0.0f, 1.0f, dot);       // cosine distance
+        };
+
+        const int distinctStructures = structures.size();
+        double sum = 0.0; int pairs = 0, nearDupes = 0;
+        float closest = 1.0f; juce::String closestPair;
+        for (size_t i = 0; i < prints.size(); ++i)
+            for (size_t j = i + 1; j < prints.size(); ++j)
+            {
+                const float d = distance (prints[i], prints[j]);
+                sum += d; ++pairs;
+                if (d < 0.02f) ++nearDupes;
+                if (d < closest)
+                {
+                    closest = d;
+                    closestPair = prints[i].label + " #" + juce::String (prints[i].seed)
+                                + "  vs  " + prints[j].label + " #" + juce::String (prints[j].seed);
+                }
+            }
+
+        std::cout << (wantArchetype.isEmpty() ? juce::String ("all archetypes") : wantArchetype)
+                  << ": " << prints.size() << " rolls, " << pairs << " pairs" << std::endl;
+        std::cout << "  distinct structures  " << distinctStructures << "/" << prints.size()
+                  << "   (the discrete choices the ear latches onto)" << std::endl;
+        std::cout << "  mean distance  " << juce::String (sum / juce::jmax (1, pairs), 4) << std::endl;
+        std::cout << "  near-duplicates (<0.02)  " << nearDupes
+                  << "   (" << juce::String (100.0 * nearDupes / juce::jmax (1, pairs), 1) << "% of pairs)" << std::endl;
+        std::cout << "  most alike: " << closestPair
+                  << "  d=" << juce::String (closest, 4) << std::endl;
+        return 0;
+    }
+
     // --- Worst-case CPU: 16 held notes, 7-voice unison each, whole FX rack on,
     //     measured with and without oversampling. ---
     bool perfTest = false;
@@ -418,9 +555,22 @@ int main (int argc, char** argv)
                   << "  (" << nParams << " sliders)" << std::endl;
 
         // 2. Editing while a note sustains must not gap the audio.
-        proc.rollSeed (4821);
-        Patch held = proc.getPatch();
-        held.ampS = 1.0f; held.ampA = 0.01f; held.ampD = 0.05f; held.lfoDepth = 0.0f;
+        // A fully specified patch, not whatever a seed happens to roll: the edit
+        // under test is a cutoff sweep, so the filter has to be one where cutoff
+        // actually attenuates (a comb or formant would barely move).
+        Patch held;
+        held.osc[0] = { 2, 0, 0.0f, 0.8f };
+        held.osc[1] = { 2, 0, 0.0f, 0.0f };
+        held.osc[2] = { 2, 0, 0.0f, 0.0f };
+        held.oscMode = 0; held.unisonVoices = 1; held.subLevel = 0.0f; held.noiseLevel = 0.0f;
+        held.filterModel = 0; held.filterType = 0; held.filterPoles = 2;
+        held.cutoff = 8000.0f; held.resonance = 0.1f;
+        held.filterEnvAmt = 0.0f; held.keytrack = 0.0f;
+        held.ampA = 0.01f; held.ampD = 0.05f; held.ampS = 1.0f; held.ampR = 0.2f;
+        held.lfoDepth = 0.0f; held.velToAmp = 0.0f; held.velToFilter = 0.0f;
+        held.chorusMix = 0.0f; held.drive = 0.0f; held.foldAmount = 0.0f;
+        held.crushBits = 16.0f; held.crushRate = 1.0f;
+        held.phaserMix = 0.0f; held.flangerMix = 0.0f; held.compAmount = 0.0f;
         held.delayMix = 0.0f; held.reverbMix = 0.0f; held.master = 0.8f;
         proc.setPatch (held);
         settleAfterRoll();
