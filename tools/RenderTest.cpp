@@ -231,6 +231,147 @@ int main (int argc, char** argv)
         return 0;
     }
 
+    // --- Host lifecycle: a plugin host does things the standalone never does —
+    //     negotiates bus layouts, restores state before prepareToPlay, and can
+    //     hand over a block bigger than the one it prepared. Each is checked
+    //     separately so a failure names its own cause. ---
+    bool hostTest = false;
+    for (int a = 1; a < argc; ++a) if (juce::String (argv[a]) == "hosttest") hostTest = true;
+    if (hostTest)
+    {
+        bool allOk = true;
+
+        // Play a chord and report the peak that leaves the processor.
+        auto runNotes = [&] (GambleSynthProcessor& pr, int blockSize, int blocks)
+        {
+            juce::AudioBuffer<float> work (2, blockSize);
+            float peak = 0.0f;
+            for (int b = 0; b < blocks; ++b)
+            {
+                work.clear();
+                juce::MidiBuffer midi;
+                if (b == 0)
+                    for (int note : { 48, 55, 64 })
+                        midi.addEvent (juce::MidiMessage::noteOn (1, note, 0.9f), 0);
+                pr.processBlock (work, midi);
+                peak = juce::jmax (peak, work.getMagnitude (0, blockSize));
+            }
+            return peak;
+        };
+
+        // 1. Bus layout negotiation — a host asks before it commits.
+        {
+            GambleSynthProcessor pr;
+            using AC = juce::AudioChannelSet;
+            struct L { const char* name; AC set; bool mustAccept; };
+            const L layouts[] = {
+                { "stereo out", AC::stereo(), true },
+                { "mono out",   AC::mono(),   true },
+            };
+            for (const auto& l : layouts)
+            {
+                juce::AudioProcessor::BusesLayout bl;
+                bl.outputBuses.add (l.set);
+                const bool accepted = pr.checkBusesLayoutSupported (bl);
+                std::cout << "bus " << juce::String (l.name).paddedRight (' ', 12)
+                          << (accepted ? "accepted" : "rejected");
+                if (l.mustAccept && ! accepted) { allOk = false; std::cout << "   <-- MUST accept"; }
+                std::cout << std::endl;
+            }
+        }
+
+        // 2. State restored BEFORE prepareToPlay — the usual order when a host
+        //    reopens a project.
+        {
+            GambleSynthProcessor donor;
+            donor.rollSeed (4821);
+            donor.saveFavourite();
+            juce::MemoryBlock state;
+            donor.getStateInformation (state);
+
+            GambleSynthProcessor pr;
+            pr.setStateInformation (state.getData(), (int) state.getSize());
+            pr.setPlayConfigDetails (0, 2, sr, block);
+            pr.prepareToPlay (sr, block);
+
+            const float peak = runNotes (pr, block, 60);
+            const bool ok = peak > 0.01f;
+            allOk = allOk && ok;
+            std::cout << "state before prepare: " << (ok ? "PASS" : "FAIL")
+                      << "  peak=" << juce::String (peak, 4) << std::endl;
+        }
+
+        // 3. A block larger than the one prepared for. Hosts do this when the
+        //    buffer size changes, and the oversampling path has a size guard.
+        {
+            GambleSynthProcessor pr;
+            pr.setPlayConfigDetails (0, 2, sr, block);
+            pr.prepareToPlay (sr, block);
+
+            const float peak = runNotes (pr, block * 4, 20);
+            const bool ok = peak > 0.01f;
+            allOk = allOk && ok;
+            std::cout << "oversized block:      " << (ok ? "PASS" : "FAIL")
+                      << "  peak=" << juce::String (peak, 4) << std::endl;
+        }
+
+        // 4. A roll while the transport is idle, then notes — the roll cut has
+        //    to complete on its own or the output stays ducked forever.
+        {
+            GambleSynthProcessor pr;
+            pr.setPlayConfigDetails (0, 2, sr, block);
+            pr.prepareToPlay (sr, block);
+            pr.pullLever();
+
+            const float peak = runNotes (pr, block, 60);
+            const bool ok = peak > 0.01f;
+            allOk = allOk && ok;
+            std::cout << "roll then play:       " << (ok ? "PASS" : "FAIL")
+                      << "  peak=" << juce::String (peak, 4) << std::endl;
+        }
+
+        // 5. Sample rates a host might pick.
+        for (double rate : { 44100.0, 48000.0, 96000.0 })
+        {
+            GambleSynthProcessor pr;
+            pr.setPlayConfigDetails (0, 2, rate, block);
+            pr.prepareToPlay (rate, block);
+
+            const float peak = runNotes (pr, block, 60);
+            const bool ok = peak > 0.01f;
+            allOk = allOk && ok;
+            std::cout << "rate " << (int) rate << ":            " << (ok ? "PASS" : "FAIL")
+                      << "  peak=" << juce::String (peak, 4) << std::endl;
+        }
+
+        // 6. Rendering into a mono buffer — the layout we now accept.
+        {
+            GambleSynthProcessor pr;
+            pr.setPlayConfigDetails (0, 1, sr, block);
+            pr.prepareToPlay (sr, block);
+
+            juce::AudioBuffer<float> work (1, block);
+            float peak = 0.0f;
+            for (int b = 0; b < 60; ++b)
+            {
+                work.clear();
+                juce::MidiBuffer midi;
+                if (b == 0)
+                    for (int note : { 48, 55, 64 })
+                        midi.addEvent (juce::MidiMessage::noteOn (1, note, 0.9f), 0);
+                pr.processBlock (work, midi);
+                peak = juce::jmax (peak, work.getMagnitude (0, block));
+            }
+            const bool ok = peak > 0.01f;
+            allOk = allOk && ok;
+            std::cout << "mono buffer:          " << (ok ? "PASS" : "FAIL")
+                      << "  peak=" << juce::String (peak, 4) << std::endl;
+        }
+
+        std::cout << "host lifecycle: " << (allOk ? "PASS" : "FAIL") << std::endl;
+        return allOk ? 0 : 1;
+    }
+
     // --- Worst-case CPU: 16 held notes, 7-voice unison each, whole FX rack on,
     //     measured with and without oversampling. ---
     bool perfTest = false;

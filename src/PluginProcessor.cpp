@@ -64,7 +64,15 @@ void GambleSynthProcessor::prepareToPlay (double sampleRate, int samplesPerBlock
 
 bool GambleSynthProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
-    return layouts.getMainOutputChannelSet() == juce::AudioChannelSet::stereo();
+    // Stereo is what this wants, but refusing everything else is how a plugin
+    // ends up loaded-but-silent: a host that can't negotiate any layout it asked
+    // for may never call processBlock at all. Accept mono too and downmix.
+    const auto out = layouts.getMainOutputChannelSet();
+
+    if (out != juce::AudioChannelSet::stereo() && out != juce::AudioChannelSet::mono())
+        return false;
+
+    return layouts.getMainInputChannelSet().isDisabled();   // synth: no audio in
 }
 
 void GambleSynthProcessor::commit (const Patch& p)
@@ -372,6 +380,38 @@ void GambleSynthProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     const int numSamples = buffer.getNumSamples();
 
     buffer.clear();
+
+    if (buffer.getNumChannels() == 0 || numSamples == 0)
+        return;
+
+    // Unprepared: emit silence rather than dividing by a zero sample rate deep in
+    // the voices, which would spray NaN and get the track muted by some hosts.
+    if (currentSampleRate <= 0.0 || osBuffer.getNumSamples() == 0)
+        return;
+
+    // A host may hand over a bigger block than it prepared for. Splitting keeps
+    // every internal buffer within the size it was allocated at, without
+    // allocating on the audio thread.
+    if (numSamples > maxBlockSize)
+    {
+        int offset = 0;
+        while (offset < numSamples)
+        {
+            const int chunk = juce::jmin (maxBlockSize, numSamples - offset);
+
+            juce::AudioBuffer<float> slice (buffer.getArrayOfWritePointers(),
+                                            buffer.getNumChannels(), offset, chunk);
+            juce::MidiBuffer sliceMidi;
+            for (const auto meta : midi)
+                if (meta.samplePosition >= offset && meta.samplePosition < offset + chunk)
+                    sliceMidi.addEvent (meta.getMessage(), meta.samplePosition - offset);
+
+            processBlock (slice, sliceMidi);
+            offset += chunk;
+        }
+        return;
+    }
+
     keyboardState.processNextMidiBuffer (midi, 0, numSamples, true);
 
     updateTempo();
@@ -410,9 +450,15 @@ void GambleSynthProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
         cutState = Cut::FadeIn;      // this block renders the new sound from zero
     }
 
+    // Everything downstream is written as a stereo pair. On a mono bus the right
+    // channel goes to a scratch buffer and is folded back in at the end, rather
+    // than being dropped (which would silence anything panned hard right).
+    const bool monoOut = buffer.getNumChannels() < 2;
     auto* L = buffer.getWritePointer (0);
-    auto* R = buffer.getNumChannels() > 1 ? buffer.getWritePointer (1)
-                                          : monoScratch.getWritePointer (0);
+    auto* R = monoOut ? monoScratch.getWritePointer (0) : buffer.getWritePointer (1);
+
+    if (monoOut)
+        juce::FloatVectorOperations::clear (R, numSamples);
 
     if (oversample && numSamples * 2 <= osBuffer.getNumSamples())
     {
@@ -502,6 +548,10 @@ void GambleSynthProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
         applyCut (L, R, numSamples);
 
     updateMeter (L, R, numSamples);
+
+    if (monoOut)                          // fold the scratch right channel back in
+        for (int n = 0; n < numSamples; ++n)
+            L[n] = 0.5f * (L[n] + R[n]);
 }
 
 // Peak per block with a decay, so the meter falls smoothly instead of flickering.
