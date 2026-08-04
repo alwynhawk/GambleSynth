@@ -3,6 +3,7 @@
 #include "PluginProcessor.h"
 #include "DevPanel.h"
 #include "Theme.h"
+#include "Skin.h"
 
 // Stereo output meter with peak decay and a clip flag. Click it to clear.
 class OutputMeter : public juce::Component, private juce::Timer
@@ -85,6 +86,8 @@ private:
     void refresh();          // sync labels / button states to the processor
     void applyTypedSeed();
     int  keyboardHeight() const;
+    void layoutFromSkin (juce::Rectangle<int> artArea);
+    void layoutPlain();      // the drawn UI, used when there's no artwork
 
     static constexpr int headerHeight = 36;
 
@@ -107,9 +110,15 @@ private:
     juce::OwnedArray<juce::TextButton> lockButtons;
     OutputMeter meter { proc };
 
+    // Skin artwork, embedded at build time from assets/. Null when there is
+    // none, in which case the plain drawn UI is used instead.
+    juce::Image skin;
+    juce::Rectangle<int> artArea;      // where the artwork is actually drawn
+
     // Easter egg: seed 777 toggles the parameter panel (session-only).
     std::unique_ptr<DevPanel> devPanel;
     bool devMode = false;
+    int  normalWidth  = 0;
     int  normalHeight = 400;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GambleSynthEditor)

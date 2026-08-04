@@ -58,12 +58,28 @@ GambleSynthEditor::GambleSynthEditor (GambleSynthProcessor& p)
     keyboard.setColour (juce::KeyboardComponentBase::upDownButtonArrowColourId,      Theme::ink());
     addAndMakeVisible (keyboard);
 
+   #if GAMBLESYNTH_HAS_ASSETS
+    skin = juce::ImageCache::getFromMemory (BinaryData::machine_png, BinaryData::machine_pngSize);
+   #endif
+
     proc.onPatchChanged = [this] { refresh(); };
     refresh();
 
-    setSize (720, 400);
-    setResizable (true, true);
-    setResizeLimits (540, 380, 1600, 900);
+    if (skin.isValid())
+    {
+        // Follow the artwork's shape rather than imposing a shape on it.
+        const int h = 900;
+        setSize (juce::roundToInt (h * Skin::aspect()), h);
+        setResizable (true, true);
+        setResizeLimits (360, 480, 1400, 1900);
+        getConstrainer()->setFixedAspectRatio (Skin::aspect());
+    }
+    else
+    {
+        setSize (720, 400);
+        setResizable (true, true);
+        setResizeLimits (540, 380, 1600, 900);
+    }
 }
 
 GambleSynthEditor::~GambleSynthEditor()
@@ -99,10 +115,22 @@ void GambleSynthEditor::setDevMode (bool shouldBeOn)
 
     if (devMode)
     {
+        normalWidth  = getWidth();
         normalHeight = getHeight();
         devPanel = std::make_unique<DevPanel> (proc);
         addAndMakeVisible (*devPanel);
-        setSize (getWidth(), juce::jmax (getHeight(), 720));
+
+        if (skin.isValid())
+        {
+            // Widen to make room for the panel rather than squashing the
+            // machine into half the window.
+            if (auto* c = getConstrainer()) c->setFixedAspectRatio (0.0);
+            setSize (getWidth() * 2, getHeight());
+        }
+        else
+        {
+            setSize (getWidth(), juce::jmax (getHeight(), 720));
+        }
     }
     else
     {
@@ -113,7 +141,9 @@ void GambleSynthEditor::setDevMode (bool shouldBeOn)
         for (int reel = 0; reel < NumReels; ++reel)
             proc.setReelLocked (reel, false);
 
-        setSize (getWidth(), normalHeight);
+        setSize (normalWidth > 0 ? normalWidth : getWidth(), normalHeight);
+        if (skin.isValid())
+            if (auto* c = getConstrainer()) c->setFixedAspectRatio (Skin::aspect());
     }
 
     for (auto* b : lockButtons)
@@ -152,6 +182,23 @@ void GambleSynthEditor::paint (juce::Graphics& g)
 {
     g.fillAll (Theme::ground());
 
+    if (skin.isValid())
+    {
+        g.drawImage (skin, artArea.toFloat(),
+                     juce::RectanglePlacement::stretchToFit, false);
+
+        // Dev mode outlines every hotspot over the art, so a control that has
+        // drifted from its hole is obvious instead of subtly wrong.
+        if (devMode)
+        {
+            g.setColour (juce::Colours::lime.withAlpha (0.75f));
+            for (auto* c : getChildren())
+                if (c->isVisible() && c != devPanel.get())
+                    g.drawRect (c->getBounds(), 1);
+        }
+        return;
+    }
+
     // Title strip
     g.setColour (Theme::ink());
     g.setFont (Theme::mono (17.0f, true));
@@ -172,6 +219,51 @@ int GambleSynthEditor::keyboardHeight() const
 }
 
 void GambleSynthEditor::resized()
+{
+    if (skin.isValid())
+    {
+        auto bounds = getLocalBounds();
+
+        // The dev panel takes the right-hand half; the machine keeps the rest.
+        if (devPanel != nullptr)
+        {
+            devPanel->setBounds (bounds.removeFromRight (bounds.getWidth() / 2));
+            bounds.removeFromRight (6);
+        }
+
+        artArea = Skin::fitArtwork (bounds);
+        layoutFromSkin (artArea);
+        return;
+    }
+
+    layoutPlain();
+}
+
+void GambleSynthEditor::layoutFromSkin (juce::Rectangle<int> art)
+{
+    const auto& L = Skin::layout();
+    auto at = [art] (juce::Rectangle<float> norm) { return Skin::place (norm, art); };
+
+    rollButton.setBounds  (at (L.roll));
+    seedLabel.setBounds   (at (L.seedDisplay));
+    seedEditor.setBounds  (at (L.seedEntry));
+    goButton.setBounds    (at (L.go));
+    undoButton.setBounds  (at (L.undo));
+    redoButton.setBounds  (at (L.redo));
+    saveButton.setBounds  (at (L.save));
+    loadButton.setBounds  (at (L.load));
+    chaosButton.setBounds (at (L.chaos));
+    meter.setBounds       (at (L.meter));
+    keyboard.setBounds    (at (L.keyboard));
+
+    for (int k = 0; k < lockButtons.size(); ++k)
+        lockButtons[k]->setBounds (at (L.hold (k)));
+
+    // Key width follows the artwork so the octave span stays put as it scales.
+    keyboard.setKeyWidth (juce::jmax (12.0f, (float) keyboard.getWidth() / 15.0f));
+}
+
+void GambleSynthEditor::layoutPlain()
 {
     auto r = getLocalBounds().reduced (1);
 

@@ -6,6 +6,8 @@ cmake-build-*/
 *.wav
 ui_*.png
 
+# Skin artwork IS tracked (assets/*.png) - it's part of the build
+
 # Editors / OS
 .vscode/
 .idea/

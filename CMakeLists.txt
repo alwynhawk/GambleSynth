@@ -26,6 +26,18 @@ juce_add_plugin(GambleSynth
     PLUGIN_CODE    Gsyn
     VST3_CATEGORIES Instrument Synth)
 
+# ---- Skin artwork -------------------------------------------------------
+# Drop PNGs into assets/ and they get compiled into the binary. Absent, the
+# plugin falls back to the plain drawn UI, so the build never depends on art.
+file(GLOB SKIN_ASSETS "${CMAKE_CURRENT_SOURCE_DIR}/assets/*.png")
+if(SKIN_ASSETS)
+    juce_add_binary_data(GambleSynthAssets SOURCES ${SKIN_ASSETS})
+    set_target_properties(GambleSynthAssets PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
+    message(STATUS "GambleSynth: embedding skin artwork")
+else()
+    message(STATUS "GambleSynth: no assets/*.png - using the drawn UI")
+endif()
+
 juce_generate_juce_header(GambleSynth)
 
 target_sources(GambleSynth PRIVATE
@@ -36,6 +48,11 @@ target_compile_definitions(GambleSynth PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0)
+
+if(SKIN_ASSETS)
+    target_link_libraries(GambleSynth PRIVATE GambleSynthAssets)
+    target_compile_definitions(GambleSynth PUBLIC GAMBLESYNTH_HAS_ASSETS=1)
+endif()
 
 target_link_libraries(GambleSynth
     PRIVATE
@@ -57,6 +74,11 @@ target_compile_definitions(RenderTest PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_STANDALONE_APPLICATION=1)
+if(SKIN_ASSETS)
+    target_link_libraries(RenderTest PRIVATE GambleSynthAssets)
+    target_compile_definitions(RenderTest PUBLIC GAMBLESYNTH_HAS_ASSETS=1)
+endif()
+
 target_link_libraries(RenderTest
     PRIVATE
         juce::juce_audio_utils

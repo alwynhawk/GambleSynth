@@ -89,8 +89,8 @@ int main (int argc, char** argv)
                     std::cout << "wrote " << f.getFullPathName() << std::endl;
         };
 
-        shoot (false, 720, 400, "ui_main.png");
-        shoot (true,  720, 760, "ui_dev.png");
+        shoot (false, 600, 800, "ui_main.png");
+        shoot (true,  1200, 800, "ui_dev.png");
         return 0;
     }
 
@@ -778,12 +778,14 @@ int main (int argc, char** argv)
                 dynamic_cast<GambleSynthEditor*> (proc.createEditor()));
             if (ed != nullptr)
             {
-                const int plainHeight = ed->getHeight();
+                // Dev mode has to make room for the panel — by widening when the
+                // machine artwork is up, or by growing taller on the plain UI.
+                const int plainArea = ed->getWidth() * ed->getHeight();
                 ed->setDevMode (true);
-                const int devHeight = ed->getHeight();
-                ed->setSize (900, 800);              // exercise layout with the panel up
+                const int devArea = ed->getWidth() * ed->getHeight();
+                ed->setSize (1200, 800);             // exercise layout with the panel up
                 ed->setDevMode (false);
-                editorOk = (devHeight > plainHeight) && (ed->getHeight() > 0);
+                editorOk = (devArea > plainArea) && (ed->getWidth() > 0) && (ed->getHeight() > 0);
             }
         }
         std::cout << "editor 777 toggle: " << (editorOk ? "PASS" : "FAIL") << std::endl;
