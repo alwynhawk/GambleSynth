@@ -40,13 +40,14 @@ public:
 
     void paint (juce::Graphics& g) override
     {
+        // No background: the cabinet artwork carries its own reel backing, and
+        // this component sits over it. Anything painted here would cover it.
         auto r = getLocalBounds().toFloat();
-        drawReelStrip (g, r);
 
         // A spinning reel is a blur of passing symbols, not a symbol.
         if (spinning)
         {
-            g.setColour (juce::Colours::black.withAlpha (0.28f));
+            g.setColour (juce::Colours::white.withAlpha (0.5f));
             const float band = r.getHeight() / 5.0f;
             for (int i = -1; i < 6; ++i)
             {
@@ -125,25 +126,6 @@ private:
         }
     }
    #endif
-
-    // A real reel is a paper strip wrapped round a drum, so it is cream rather
-    // than black and falls off in brightness where the cylinder curves away.
-    // That curvature is what makes it read as a machine instead of a screen.
-    static void drawReelStrip (juce::Graphics& g, juce::Rectangle<float> r)
-    {
-        juce::ColourGradient drum (juce::Colour (0xff8b8477), r.getX(), r.getY(),
-                                   juce::Colour (0xff8b8477), r.getX(), r.getBottom(), false);
-        drum.addColour (0.18, juce::Colour (0xfff4efe3));
-        drum.addColour (0.50, juce::Colour (0xfffcf8ee));
-        drum.addColour (0.82, juce::Colour (0xfff4efe3));
-        g.setGradientFill (drum);
-        g.fillRect (r);
-
-        // The symbols above and below are just cresting the edge of the drum.
-        g.setColour (juce::Colours::black.withAlpha (0.22f));
-        g.fillRect (r.getX(), r.getY() + r.getHeight() * 0.055f, r.getWidth(), 1.5f);
-        g.fillRect (r.getX(), r.getBottom() - r.getHeight() * 0.055f, r.getWidth(), 1.5f);
-    }
 
     void drawFruit (juce::Graphics& g, juce::Rectangle<float> r) const
     {

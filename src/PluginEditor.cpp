@@ -72,6 +72,12 @@ GambleSynthEditor::GambleSynthEditor (GambleSynthProcessor& p)
         // show through the JACKPOT window while buttons stay clickable.
         overlay = std::make_unique<MachineOverlay> (skin);
         addAndMakeVisible (*overlay);
+
+        // The lever is not part of the cabinet artwork any more, so it draws
+        // above it as its own animated layer.
+        lever = std::make_unique<LeverDisplay>();
+        addAndMakeVisible (*lever);
+
         keyboard.toBack();      // bottom of the stack
         overlay->toBack();      // then the cabinet, just above it
         keyboard.toBack();
@@ -192,6 +198,7 @@ void GambleSynthEditor::refresh()
         lastShownSeed = p.seed;
         for (int k = 0; k < reels.size(); ++k)
             reels[k]->startSpin (k);
+        if (lever != nullptr) lever->pull();
     }
 
     // With a reel locked the sound is a hybrid, so the seed alone no longer
@@ -294,6 +301,7 @@ void GambleSynthEditor::resized()
 
         artArea = Skin::fitArtwork (bounds);
         if (overlay != nullptr) overlay->setBounds (artArea);
+        if (lever   != nullptr) lever->setBounds (artArea);
         layoutFromSkin (artArea);
         return;
     }

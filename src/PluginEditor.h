@@ -5,6 +5,7 @@
 #include "Theme.h"
 #include "Skin.h"
 #include "ReelDisplay.h"
+#include "LeverDisplay.h"
 
 // Stereo output meter with peak decay and a clip flag. Click it to clear.
 class OutputMeter : public juce::Component, private juce::Timer
@@ -88,7 +89,11 @@ public:
     void setDevMode (bool shouldBeOn);
 
     // Land the reels now, for headless screenshots.
-    void settleReels() { for (auto* r : reels) r->settle(); }
+    void settleReels()
+    {
+        for (auto* r : reels) r->settle();
+        if (lever != nullptr) lever->settle();
+    }
 
 private:
     // ROLL wears the same skin, just much larger type.
@@ -141,6 +146,7 @@ private:
     juce::Image skin;
     juce::Image backdrop;              // fills the window behind the cabinet
     std::unique_ptr<MachineOverlay> overlay;
+    std::unique_ptr<LeverDisplay>   lever;
     juce::Rectangle<int> artArea;      // where the artwork is actually drawn
     juce::OwnedArray<ReelDisplay> reels;
 

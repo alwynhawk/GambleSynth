@@ -5,6 +5,7 @@
 #include "../src/DevPanel.h"
 #include "../src/PluginEditor.h"
 #include "../src/Fruit.h"
+#include "../src/LeverDisplay.h"
 
 int main (int argc, char** argv)
 {
@@ -883,7 +884,7 @@ int main (int argc, char** argv)
         // The window must open at one size every time, and may only be resized
         // along the artwork's diagonal. setSize bypasses the constrainer, so
         // this goes through setBoundsConstrained the way a real drag does.
-        bool shapeOk = false;
+        bool shapeOk = false, leverOk = false;
         {
             std::unique_ptr<GambleSynthEditor> a (
                 dynamic_cast<GambleSynthEditor*> (proc.createEditor()));
@@ -912,6 +913,30 @@ int main (int argc, char** argv)
         }
         std::cout << "window shape: " << (shapeOk ? "PASS" : "FAIL") << std::endl;
 
+        // The lever: half a second, down through every frame and back to rest.
+        {
+            juce::Array<int> seen;
+            int last = -1;
+            for (int ms = 0; ms < LeverDisplay::PullMs; ++ms)
+            {
+                const int f = LeverDisplay::frameAt (ms);
+                if (f != last) { seen.add (f); last = f; }
+            }
+
+            const bool reachesEnd  = seen.contains (LeverDisplay::frameCount() - 1);
+            const bool usesAll     = seen.size() >= LeverDisplay::frameCount();
+            const bool restsAfter  = LeverDisplay::frameAt (LeverDisplay::PullMs) == 0
+                                  && LeverDisplay::frameAt (LeverDisplay::PullMs + 50) == 0;
+            const bool comesBack   = seen.size() > 1 && seen.getLast() == 0;
+
+            juce::String seq;
+            for (int f : seen) seq << f << " ";
+
+            leverOk = reachesEnd && usesAll && restsAfter && comesBack;
+            std::cout << "lever " << LeverDisplay::PullMs << "ms: "
+                      << (leverOk ? "PASS" : "FAIL") << "  frames " << seq.trim() << std::endl;
+        }
+
         // 5. Locks are dev-mode only: leaving dev mode must drop them, or they'd
         //    keep shaping every roll with their buttons hidden.
         bool locksGatedOk = false;
@@ -931,7 +956,7 @@ int main (int argc, char** argv)
         std::cout << "locks gated by dev mode: " << (locksGatedOk ? "PASS" : "FAIL") << std::endl;
 
         const bool allOk = paramsOk && noCut && changed && historyOk && editorOk
-                        && locksGatedOk && shapeOk;
+                        && locksGatedOk && shapeOk && leverOk;
         std::cout << "dev panel: " << (allOk ? "PASS" : "FAIL") << std::endl;
         return allOk ? 0 : 1;
     }
