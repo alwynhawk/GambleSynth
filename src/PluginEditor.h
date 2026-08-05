@@ -114,6 +114,7 @@ private:
     void layoutPlain();      // the drawn UI, used when there's no artwork
 
     static constexpr int headerHeight = 36;
+    static constexpr int DefaultHeight = 900;   // the size it always opens at
 
     GambleSynthProcessor& proc;
     MonoLookAndFeel mono;

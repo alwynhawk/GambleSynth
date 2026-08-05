@@ -63,7 +63,9 @@ namespace Skin
         // banner decal is opaque down to y=856, so the keys start below it and
         // the whole window gets a dark backing rather than raw backdrop.
         juce::Rectangle<float> jackpotWindow { px (152.0f, 741.0f, 545.0f, 251.0f) };
-        juce::Rectangle<float> keyboard      { px (158.0f, 858.0f, 533.0f, 128.0f) };
+        // Keys fill the window top to bottom and overhang it slightly. They
+        // stretch vertically, which is fine — a tall key is still a key.
+        juce::Rectangle<float> keyboard      { px (144.0f, 741.0f, 561.0f, 249.0f) };
         juce::Rectangle<float> coinTray      { px (272.0f, 1038.0f, 312.0f, 133.0f) };
 
         // The coin tray gathers everything to do with the seed.

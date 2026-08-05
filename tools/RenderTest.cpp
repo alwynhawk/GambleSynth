@@ -880,6 +880,38 @@ int main (int argc, char** argv)
         }
         std::cout << "editor 777 toggle: " << (editorOk ? "PASS" : "FAIL") << std::endl;
 
+        // The window must open at one size every time, and may only be resized
+        // along the artwork's diagonal. setSize bypasses the constrainer, so
+        // this goes through setBoundsConstrained the way a real drag does.
+        bool shapeOk = false;
+        {
+            std::unique_ptr<GambleSynthEditor> a (
+                dynamic_cast<GambleSynthEditor*> (proc.createEditor()));
+            std::unique_ptr<GambleSynthEditor> b (
+                dynamic_cast<GambleSynthEditor*> (proc.createEditor()));
+
+            if (a != nullptr && b != nullptr)
+            {
+                const bool sameOpening = (a->getWidth() == b->getWidth())
+                                      && (a->getHeight() == b->getHeight());
+
+                bool ratioHeld = true;
+                for (auto target : { juce::Rectangle<int> (0, 0, 1200, 500),
+                                     juce::Rectangle<int> (0, 0, 400, 1400),
+                                     juce::Rectangle<int> (0, 0, 900, 900) })
+                {
+                    a->setBoundsConstrained (target);
+                    const float got = (float) a->getWidth() / (float) juce::jmax (1, a->getHeight());
+                    if (std::abs (got - Skin::aspect()) > 0.02f) ratioHeld = false;
+                }
+
+                shapeOk = sameOpening && ratioHeld;
+                std::cout << "opens at " << b->getWidth() << "x" << b->getHeight()
+                          << ", ratio " << (ratioHeld ? "held" : "BROKEN") << std::endl;
+            }
+        }
+        std::cout << "window shape: " << (shapeOk ? "PASS" : "FAIL") << std::endl;
+
         // 5. Locks are dev-mode only: leaving dev mode must drop them, or they'd
         //    keep shaping every roll with their buttons hidden.
         bool locksGatedOk = false;
@@ -898,7 +930,8 @@ int main (int argc, char** argv)
         }
         std::cout << "locks gated by dev mode: " << (locksGatedOk ? "PASS" : "FAIL") << std::endl;
 
-        const bool allOk = paramsOk && noCut && changed && historyOk && editorOk && locksGatedOk;
+        const bool allOk = paramsOk && noCut && changed && historyOk && editorOk
+                        && locksGatedOk && shapeOk;
         std::cout << "dev panel: " << (allOk ? "PASS" : "FAIL") << std::endl;
         return allOk ? 0 : 1;
     }

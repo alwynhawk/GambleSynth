@@ -90,12 +90,17 @@ GambleSynthEditor::GambleSynthEditor (GambleSynthProcessor& p)
 
     if (skin.isValid())
     {
-        // Follow the artwork's shape rather than imposing a shape on it.
-        const int h = 900;
-        setSize (juce::roundToInt (h * Skin::aspect()), h);
+        // Always opens at the same size, and can only be resized along the
+        // artwork's own diagonal — the cabinet never stretches.
         setResizable (true, true);
-        setResizeLimits (360, 480, 1400, 1900);
-        getConstrainer()->setFixedAspectRatio (Skin::aspect());
+        setResizeLimits (juce::roundToInt (DefaultHeight * 0.45 * Skin::aspect()),
+                         juce::roundToInt (DefaultHeight * 0.45),
+                         juce::roundToInt (DefaultHeight * 2.0 * Skin::aspect()),
+                         juce::roundToInt (DefaultHeight * 2.0));
+        if (auto* c = getConstrainer())
+            c->setFixedAspectRatio (Skin::aspect());
+
+        setSize (juce::roundToInt (DefaultHeight * Skin::aspect()), DefaultHeight);
     }
     else
     {
