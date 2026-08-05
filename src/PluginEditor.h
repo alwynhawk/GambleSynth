@@ -4,6 +4,7 @@
 #include "DevPanel.h"
 #include "Theme.h"
 #include "Skin.h"
+#include "ReelDisplay.h"
 
 // Stereo output meter with peak decay and a clip flag. Click it to clear.
 class OutputMeter : public juce::Component, private juce::Timer
@@ -66,6 +67,9 @@ public:
     // Normally reached by typing seed 777; public so it can be driven directly.
     void setDevMode (bool shouldBeOn);
 
+    // Land the reels now, for headless screenshots.
+    void settleReels() { for (auto* r : reels) r->settle(); }
+
 private:
     // ROLL wears the same skin, just much larger type.
     struct BigButtonLNF : MonoLookAndFeel
@@ -93,6 +97,7 @@ private:
 
     GambleSynthProcessor& proc;
     MonoLookAndFeel mono;
+    SkinnedLookAndFeel skinned;
     BigButtonLNF bigLNF;
 
     juce::TextButton rollButton  { "ROLL" };
@@ -114,10 +119,12 @@ private:
     // none, in which case the plain drawn UI is used instead.
     juce::Image skin;
     juce::Rectangle<int> artArea;      // where the artwork is actually drawn
+    juce::OwnedArray<ReelDisplay> reels;
 
     // Easter egg: seed 777 toggles the parameter panel (session-only).
     std::unique_ptr<DevPanel> devPanel;
     bool devMode = false;
+    int  lastShownSeed = -1;
     int  normalWidth  = 0;
     int  normalHeight = 400;
 

@@ -19,8 +19,8 @@ namespace Skin
 {
     // The canvas the artwork is authored at. Only the *ratio* matters at
     // runtime, but keeping it equal to the real file keeps the numbers honest.
-    inline constexpr float ArtWidth  = 900.0f;
-    inline constexpr float ArtHeight = 1200.0f;
+    inline constexpr float ArtWidth  = 908.0f;
+    inline constexpr float ArtHeight = 1206.0f;
 
     inline constexpr float aspect() { return ArtWidth / ArtHeight; }
 
@@ -33,33 +33,48 @@ namespace Skin
     // ---- Control positions -------------------------------------------------
     // These are placeholders laid out on a plain 900x1200 canvas. Replace the
     // numbers as the artwork dictates; the names are what the editor asks for.
+    // Measured from the artwork's own transparent cut-outs, so these match the
+    // holes exactly rather than being eyeballed.
     struct Layout
     {
-        juce::Rectangle<float> reelWindow { px (110.0f,  250.0f, 680.0f, 260.0f) };
-        juce::Rectangle<float> lever      { px (800.0f,  300.0f,  80.0f, 380.0f) };
-        juce::Rectangle<float> roll       { px (300.0f,  580.0f, 300.0f, 110.0f) };
+        // The three windows, left to right.
+        juce::Rectangle<float> reel (int index) const
+        {
+            switch (index)
+            {
+                case 0:  return px (214.0f, 399.0f, 132.0f, 240.0f);
+                case 1:  return px (360.0f, 399.0f, 135.0f, 242.0f);
+                default: return px (510.0f, 399.0f, 137.0f, 244.0f);
+            }
+        }
 
-        juce::Rectangle<float> seedDisplay { px (110.0f,  120.0f, 480.0f,  70.0f) };
-        juce::Rectangle<float> seedEntry   { px (600.0f,  120.0f, 130.0f,  70.0f) };
-        juce::Rectangle<float> go          { px (740.0f,  120.0f,  90.0f,  70.0f) };
-
-        juce::Rectangle<float> undo  { px (110.0f, 730.0f,  90.0f, 70.0f) };
-        juce::Rectangle<float> redo  { px (210.0f, 730.0f,  90.0f, 70.0f) };
-        juce::Rectangle<float> save  { px (330.0f, 730.0f, 150.0f, 70.0f) };
-        juce::Rectangle<float> load  { px (490.0f, 730.0f, 150.0f, 70.0f) };
-        juce::Rectangle<float> chaos { px (650.0f, 730.0f, 140.0f, 70.0f) };
-        juce::Rectangle<float> meter { px (110.0f, 820.0f, 680.0f, 40.0f) };
-
-        juce::Rectangle<float> keyboard { px (60.0f, 900.0f, 780.0f, 250.0f) };
-
-        // The five HOLD reels, evenly spaced under the reel window.
+        // HOLD sits directly under its own window.
         juce::Rectangle<float> hold (int index) const
         {
-            const float w = 120.0f, gap = 16.0f;
-            const float total = 5.0f * w + 4.0f * gap;
-            const float x0 = (ArtWidth - total) * 0.5f;
-            return px (x0 + (float) index * (w + gap), 530.0f, w, 40.0f);
+            auto r = reel (index);
+            return { r.getX(), r.getY() + r.getHeight() + 0.006f, r.getWidth(), 0.026f };
         }
+
+        // The lever: knob measured at 798,319; the stem runs down to y=851.
+        juce::Rectangle<float> lever { px (758.0f, 300.0f, 112.0f, 560.0f) };
+
+        // The JACKPOT panel carries everything to do with the seed.
+        juce::Rectangle<float> seedDisplay { px (215.0f, 800.0f, 425.0f,  86.0f) };
+        juce::Rectangle<float> seedEntry   { px (215.0f, 900.0f, 250.0f,  62.0f) };
+        juce::Rectangle<float> go          { px (480.0f, 900.0f, 160.0f,  62.0f) };
+
+        // The coin tray at the bottom.
+        juce::Rectangle<float> meter { px (272.0f, 1038.0f, 312.0f, 133.0f) };
+
+        // The WINS strip above the reels, left of the 777 graphic.
+        juce::Rectangle<float> undo  { px (150.0f, 285.0f,  74.0f, 60.0f) };
+        juce::Rectangle<float> redo  { px (232.0f, 285.0f,  74.0f, 60.0f) };
+        juce::Rectangle<float> save  { px (150.0f, 668.0f, 150.0f, 48.0f) };
+        juce::Rectangle<float> load  { px (310.0f, 668.0f, 150.0f, 48.0f) };
+        juce::Rectangle<float> chaos { px (470.0f, 668.0f, 180.0f, 48.0f) };
+
+        // No keyboard on the cabinet, so it lives below it - see keyboardStrip.
+        juce::Rectangle<float> roll { px (272.0f, 1038.0f, 312.0f, 133.0f) };
     };
 
     inline const Layout& layout()

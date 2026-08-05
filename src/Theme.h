@@ -9,6 +9,7 @@ namespace Theme
     inline juce::Colour ink()    { return juce::Colour (0xffffffff); }
     inline juce::Colour ground() { return juce::Colour (0xff000000); }
     inline juce::Colour dim()    { return juce::Colour (0xff6e6e6e); }   // disabled / hints
+    inline juce::Colour gold()   { return juce::Colour (0xffd6b25e); }   // over artwork
 
     inline juce::Font mono (float height, bool bold = false)
     {
@@ -67,6 +68,73 @@ struct FlatKeyboard : juce::MidiKeyboardComponent
         g.fillRect (area);
         g.setColour (isOver ? juce::Colour (0xffcfcfcf) : Theme::ink());
         g.drawRect (area, 1.0f);
+    }
+};
+
+// Over artwork, a control must not paint a slab of its own — the cabinet is the
+// background. Text and a hairline only, so the machine shows through.
+struct SkinnedLookAndFeel : juce::LookAndFeel_V4
+{
+    SkinnedLookAndFeel()
+    {
+        setColour (juce::Label::textColourId,                 Theme::gold());
+        setColour (juce::TextEditor::backgroundColourId,      juce::Colours::black.withAlpha (0.55f));
+        setColour (juce::TextEditor::textColourId,            Theme::gold());
+        setColour (juce::TextEditor::outlineColourId,         Theme::gold().withAlpha (0.5f));
+        setColour (juce::TextEditor::focusedOutlineColourId,  Theme::gold());
+        setColour (juce::TextEditor::highlightColourId,       Theme::gold());
+        setColour (juce::TextEditor::highlightedTextColourId, juce::Colours::black);
+        setColour (juce::CaretComponent::caretColourId,       Theme::gold());
+    }
+
+    juce::Font getTextButtonFont (juce::TextButton&, int buttonHeight) override
+    {
+        return Theme::mono (juce::jlimit (10.0f, 26.0f, buttonHeight * 0.42f), true);
+    }
+
+    // The seed is the shareable thing, so it gets to be the biggest text here.
+    juce::Font getLabelFont (juce::Label& label) override
+    {
+        return Theme::mono (juce::jmax (12.0f, label.getHeight() * 0.72f), true);
+    }
+
+    void drawButtonBackground (juce::Graphics& g, juce::Button& b, const juce::Colour&,
+                               bool highlighted, bool down) override
+    {
+        auto r = b.getLocalBounds().toFloat().reduced (0.5f);
+
+        if (b.getToggleState() || down)          // engaged: a dark plate + gold rule
+        {
+            g.setColour (juce::Colours::black.withAlpha (0.62f));
+            g.fillRect (r);
+            g.setColour (Theme::gold());
+            g.drawRect (r, 1.5f);
+        }
+        else if (highlighted)
+        {
+            g.setColour (Theme::gold().withAlpha (0.5f));
+            g.drawRect (r, 1.0f);
+        }
+    }
+
+    void drawButtonText (juce::Graphics& g, juce::TextButton& b, bool, bool down) override
+    {
+        const auto text = b.getButtonText();
+        if (text.isEmpty()) return;              // invisible hotspots draw nothing
+
+        g.setFont (getTextButtonFont (b, b.getHeight()));
+
+        // A dark outline keeps the label readable over whatever it sits on.
+        g.setColour (juce::Colours::black.withAlpha (0.8f));
+        for (int dx = -1; dx <= 1; ++dx)
+            for (int dy = -1; dy <= 1; ++dy)
+                if (dx || dy)
+                    g.drawText (text, b.getLocalBounds().translated (dx, dy),
+                                juce::Justification::centred, false);
+
+        g.setColour (b.isEnabled() ? (down ? juce::Colours::white : Theme::gold())
+                                   : Theme::gold().withAlpha (0.35f));
+        g.drawText (text, b.getLocalBounds(), juce::Justification::centred, false);
     }
 };
 

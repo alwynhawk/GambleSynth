@@ -62,6 +62,20 @@ GambleSynthEditor::GambleSynthEditor (GambleSynthProcessor& p)
     skin = juce::ImageCache::getFromMemory (BinaryData::machine_png, BinaryData::machine_pngSize);
    #endif
 
+    if (skin.isValid())
+    {
+        for (int k = 0; k < 3; ++k)
+            addAndMakeVisible (reels.add (new ReelDisplay (proc, (ReelDisplay::Kind) k)));
+
+        // Over artwork every control is a hotspot, not a slab. The lever becomes
+        // the roll trigger and the ROLL button disappears into it.
+        setLookAndFeel (&skinned);
+        rollButton.setLookAndFeel (&skinned);
+        rollButton.setButtonText ({});
+        seedLabel.setColour (juce::Label::textColourId, Theme::gold());
+        seedLabel.setJustificationType (juce::Justification::centred);
+    }
+
     proc.onPatchChanged = [this] { refresh(); };
     refresh();
 
@@ -157,6 +171,15 @@ void GambleSynthEditor::refresh()
 {
     const auto& p = proc.getPatch();
 
+    // Spin the reels when the sound actually changed. The audio has already
+    // switched — this is the flourish catching up, never a thing to wait for.
+    if (p.seed != lastShownSeed)
+    {
+        lastShownSeed = p.seed;
+        for (int k = 0; k < reels.size(); ++k)
+            reels[k]->startSpin (k);
+    }
+
     // With a reel locked the sound is a hybrid, so the seed alone no longer
     // reproduces it — say so rather than showing a code that won't work.
     seedLabel.setText ("SEED " + juce::String (p.seed).paddedLeft ('0', 6)
@@ -231,6 +254,11 @@ void GambleSynthEditor::resized()
             bounds.removeFromRight (6);
         }
 
+        // The cabinet has no keyboard on it, so one lives underneath.
+        const int keyH = juce::jlimit (70, 150, bounds.getHeight() / 8);
+        auto keys = bounds.removeFromBottom (keyH);
+        keyboard.setBounds (keys.reduced (bounds.getWidth() / 12, 4));
+
         artArea = Skin::fitArtwork (bounds);
         layoutFromSkin (artArea);
         return;
@@ -254,13 +282,18 @@ void GambleSynthEditor::layoutFromSkin (juce::Rectangle<int> art)
     loadButton.setBounds  (at (L.load));
     chaosButton.setBounds (at (L.chaos));
     meter.setBounds       (at (L.meter));
-    keyboard.setBounds    (at (L.keyboard));
+    rollButton.setBounds  (at (L.lever));      // the lever *is* the roll button
 
-    for (int k = 0; k < lockButtons.size(); ++k)
+    for (int k = 0; k < reels.size(); ++k)
+        reels[k]->setBounds (at (L.reel (k)));
+
+    // HOLD sits under its own window, and only exists in dev mode for now.
+    for (int k = 0; k < lockButtons.size() && k < 3; ++k)
         lockButtons[k]->setBounds (at (L.hold (k)));
+    for (int k = 3; k < lockButtons.size(); ++k)
+        lockButtons[k]->setBounds ({});          // reels 4 and 5 have no window
 
-    // Key width follows the artwork so the octave span stays put as it scales.
-    keyboard.setKeyWidth (juce::jmax (12.0f, (float) keyboard.getWidth() / 15.0f));
+    keyboard.setKeyWidth (juce::jmax (14.0f, (float) keyboard.getWidth() / 21.0f));
 }
 
 void GambleSynthEditor::layoutPlain()

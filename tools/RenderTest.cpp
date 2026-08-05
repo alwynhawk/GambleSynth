@@ -75,6 +75,8 @@ int main (int argc, char** argv)
             if (dev) ed->setDevMode (true);
             ed->setSize (w, h);
 
+            ed->settleReels();      // no message loop here, so land them by hand
+
             juce::Image img (juce::Image::ARGB, ed->getWidth(), ed->getHeight(), true);
             {
                 juce::Graphics g (img);
@@ -89,8 +91,8 @@ int main (int argc, char** argv)
                     std::cout << "wrote " << f.getFullPathName() << std::endl;
         };
 
-        shoot (false, 600, 800, "ui_main.png");
-        shoot (true,  1200, 800, "ui_dev.png");
+        shoot (false, 720, 1060, "ui_main.png");
+        shoot (true,  1440, 1060, "ui_dev.png");
         return 0;
     }
 
