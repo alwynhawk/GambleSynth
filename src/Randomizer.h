@@ -47,6 +47,15 @@ public:
     }
 
 private:
+    // How far a normal roll strays from its archetype's comfort zone. 1.0 was
+    // the original tuning. Raising it widens every spread and makes every
+    // structural rule-break likelier, without touching CHAOS — which has no
+    // rails at all and is unaffected by this.
+    static constexpr float Wildness = 1.2f;
+
+    // A probability scaled by Wildness, kept sane at the top end.
+    bool chanceW (float base) { return chance (juce::jmin (0.95f, base * Wildness)); }
+
     juce::String recentArch[2];   // last two archetypes, freshest first
     juce::String recentMod[2];    // last two modifiers that actually applied
 
@@ -152,7 +161,7 @@ private:
 
         // Fill whatever is left. Wild rolls take any destination; tame ones stay
         // away from the two that most easily wreck a sound.
-        const float chanceOfMore = wild ? 0.85f : 0.55f;
+        const float chanceOfMore = wild ? 0.85f : juce::jmin (0.9f, 0.55f * Wildness);
         for (; next < Patch::NumMods; ++next)
         {
             if (! chance (chanceOfMore)) break;
@@ -167,8 +176,8 @@ private:
             m.rate = chance (0.45f) ? f (0.03f, 0.9f) : f (1.5f, wild ? 18.0f : 9.0f);
 
             // Pitch is the one destination where a big depth is just out of tune.
-            m.depth = (m.dest == ModPitch) ? f (0.02f, wild ? 0.5f : 0.18f)
-                                           : f (0.15f, wild ? 1.0f : 0.7f);
+            m.depth = (m.dest == ModPitch) ? f (0.02f, wild ? 0.5f : 0.18f * Wildness)
+                                           : f (0.15f, juce::jmin (1.0f, wild ? 1.0f : 0.7f * Wildness));
 
             // A stepped or square modulator on the grid reads as rhythm.
             if ((m.shape == ModSampleHold || m.shape == ModSquare) && chance (0.5f))
@@ -177,7 +186,7 @@ private:
 
         // The mod envelope's second destination: pitch drops, FM sweeps, filters
         // that do something other than open.
-        if (chance (wild ? 0.6f : 0.35f))
+        if (wild ? chance (0.6f) : chanceW (0.35f))
         {
             p.envDest   = pickDest (wild);
             p.envAmount = f (-1.0f, 1.0f);
@@ -185,7 +194,7 @@ private:
 
         // Transient layers: a fast-decaying oscillator over a sustained one is
         // how a struck instrument is built.
-        if (chance (wild ? 0.5f : 0.3f))
+        if (wild ? chance (0.5f) : chanceW (0.3f))
         {
             const int which = chance (0.6f) ? 1 : 2;
             p.osc[which].decay = f (0.01f, 0.35f);
@@ -194,7 +203,9 @@ private:
 
     int pickShape (bool wild)
     {
-        if (! wild && chance (0.45f)) return chance (0.6f) ? ModSine : ModTri;
+        // The smooth shapes are the safe ones; a higher Wildness reaches for the
+        // stepped and stuttering ones more often.
+        if (! wild && chance (0.45f / Wildness)) return chance (0.6f) ? ModSine : ModTri;
         return i (0, NumModShapes - 1);
     }
 
@@ -205,7 +216,7 @@ private:
             const int d = i (1, NumModDests - 1);
             // Amp and pitch are the two that turn a good sound bad fastest, so
             // tame rolls only take them occasionally.
-            if (! wild && (d == ModAmp || d == ModPitch) && ! chance (0.3f))
+            if (! wild && (d == ModAmp || d == ModPitch) && ! chanceW (0.3f))
                 continue;
             return d;
         }
@@ -226,22 +237,23 @@ private:
             v = juce::jlimit (lo, hi, v * std::exp2 (f (-oct, oct)));
         };
 
-        spread (p.cutoff, 60.0f,  12000.0f, 0.9f);
-        spread (p.ampD,   0.01f,  3.0f,     0.7f);
-        spread (p.ampR,   0.02f,  3.5f,     0.7f);
-        spread (p.modD,   0.01f,  3.0f,     0.7f);
-        spread (p.mod[0].rate, 0.03f, 18.0f, 0.6f);
+        spread (p.cutoff, 60.0f,  12000.0f, 0.9f * Wildness);
+        spread (p.ampD,   0.01f,  3.0f,     0.7f * Wildness);
+        spread (p.ampR,   0.02f,  3.5f,     0.7f * Wildness);
+        spread (p.modD,   0.01f,  3.0f,     0.7f * Wildness);
+        spread (p.mod[0].rate, 0.03f, 18.0f, 0.6f * Wildness);
 
-        p.resonance    = juce::jlimit (0.0f,  0.85f, p.resonance + f (-0.12f, 0.28f));
-        p.filterEnvAmt = juce::jlimit (-1.0f, 1.0f,  p.filterEnvAmt + f (-0.25f, 0.25f));
-        p.stereoWidth  = juce::jlimit (0.0f,  1.0f,  p.stereoWidth + f (-0.2f, 0.2f));
+        p.resonance    = juce::jlimit (0.0f,  0.85f, p.resonance + f (-0.12f, 0.28f * Wildness));
+        p.filterEnvAmt = juce::jlimit (-1.0f, 1.0f,  p.filterEnvAmt + f (-0.25f, 0.25f) * Wildness);
+        p.stereoWidth  = juce::jlimit (0.0f,  1.0f,  p.stereoWidth + f (-0.2f, 0.2f) * Wildness);
 
         // Structural rule-breaking, rare enough to stay a surprise.
-        if (chance (0.15f)) { p.oscMode = i (0, 3); p.fmAmount = f (0.15f, 0.8f); }
-        if (chance (0.12f)) { p.unisonVoices = i (1, 7); p.unisonDetune = f (5.0f, 35.0f); }
-        if (chance (0.10f)) p.osc[2].semi += chance (0.5f) ? 12 : -12;
-        if (chance (0.08f)) p.filterType = i (0, 2);
-        if (chance (0.10f)) p.subLevel = f (0.2f, 0.6f);
+        if (chanceW (0.15f)) { p.oscMode = i (0, 3); p.fmAmount = f (0.15f, 0.8f); }
+        if (chanceW (0.12f)) { p.unisonVoices = i (1, 7); p.unisonDetune = f (5.0f, 35.0f); }
+        if (chanceW (0.10f)) p.osc[2].semi += chance (0.5f) ? 12 : -12;
+        if (chanceW (0.08f)) p.filterType = i (0, 2);
+        if (chanceW (0.10f)) p.subLevel = f (0.2f, 0.6f);
+        if (chanceW (0.08f)) p.osc[i (0, 2)].wave = i (0, 3);   // swap a waveform outright
     }
 
     // ---- Modifiers: a twist applied *after* the archetype. This is what stops
@@ -250,13 +262,13 @@ private:
     // a seed still maps to exactly one sound. ----
     void applyModifier (Patch& p)
     {
-        if (! chance (0.60f)) return;
+        if (! chanceW (0.60f)) return;
 
         const int first = i (0, 17);
         p.modifierName = applyOne (p, first);
 
         // Occasionally a second, non-cancelling twist — the rolls people screenshot.
-        if (chance (0.18f))
+        if (chanceW (0.18f))
         {
             const int second = i (0, 17);
             if (second != first && ! cancels (first, second))
