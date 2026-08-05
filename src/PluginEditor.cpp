@@ -222,24 +222,6 @@ void GambleSynthEditor::paint (juce::Graphics& g)
                                                  (getHeight() - h) * 0.5f, w, h),
                          juce::RectanglePlacement::stretchToFit, false);
 
-            // Knock it back so the cabinet stays the thing you look at, and
-            // darken toward the edges so the eye lands in the middle.
-            g.setColour (juce::Colours::black.withAlpha (0.55f));
-            g.fillRect (getLocalBounds());
-
-            juce::ColourGradient vignette (juce::Colours::transparentBlack,
-                                           (float) getWidth() * 0.5f, (float) getHeight() * 0.5f,
-                                           juce::Colours::black.withAlpha (0.8f),
-                                           0.0f, 0.0f, true);
-            g.setGradientFill (vignette);
-            g.fillRect (getLocalBounds());
-        }
-
-        // A shadow lifts the cabinet off the backdrop, which a busy background
-        // otherwise flattens it into.
-        {
-            juce::DropShadow shadow (juce::Colours::black.withAlpha (0.75f), 28, {});
-            shadow.drawForRectangle (g, artArea.reduced (6));
         }
 
         g.drawImage (skin, artArea.toFloat(),
