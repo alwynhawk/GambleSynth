@@ -68,6 +68,14 @@ GambleSynthEditor::GambleSynthEditor (GambleSynthProcessor& p)
         for (int k = 0; k < 3; ++k)
             addAndMakeVisible (reels.add (new ReelDisplay (proc, (ReelDisplay::Kind) k)));
 
+        // Cabinet sits above the keyboard but below every control, so the keys
+        // show through the JACKPOT window while buttons stay clickable.
+        overlay = std::make_unique<MachineOverlay> (skin);
+        addAndMakeVisible (*overlay);
+        keyboard.toBack();      // bottom of the stack
+        overlay->toBack();      // then the cabinet, just above it
+        keyboard.toBack();
+
         // Over artwork every control is a hotspot, not a slab. The lever becomes
         // the roll trigger and the ROLL button disappears into it.
         setLookAndFeel (&skinned);
@@ -224,8 +232,16 @@ void GambleSynthEditor::paint (juce::Graphics& g)
 
         }
 
-        g.drawImage (skin, artArea.toFloat(),
-                     juce::RectanglePlacement::stretchToFit, false);
+        // The cut-outs are holes in the artwork, so without a backing they show
+        // raw backdrop and nothing on them is readable.
+        {
+            const auto& L = Skin::layout();
+            g.setColour (juce::Colour (0xff0a0a0a));
+            g.fillRect (Skin::place (L.jackpotWindow, artArea));
+            g.fillRect (Skin::place (L.coinTray, artArea));
+        }
+
+        // The cabinet itself is drawn by the overlay, above the keyboard.
 
         // Dev mode outlines every hotspot over the art, so a control that has
         // drifted from its hole is obvious instead of subtly wrong.
@@ -271,12 +287,8 @@ void GambleSynthEditor::resized()
             bounds.removeFromRight (6);
         }
 
-        // The cabinet has no keyboard on it, so one lives underneath.
-        const int keyH = juce::jlimit (70, 150, bounds.getHeight() / 8);
-        auto keys = bounds.removeFromBottom (keyH);
-        keyboard.setBounds (keys.reduced (bounds.getWidth() / 12, 4));
-
         artArea = Skin::fitArtwork (bounds);
+        if (overlay != nullptr) overlay->setBounds (artArea);
         layoutFromSkin (artArea);
         return;
     }
@@ -289,7 +301,6 @@ void GambleSynthEditor::layoutFromSkin (juce::Rectangle<int> art)
     const auto& L = Skin::layout();
     auto at = [art] (juce::Rectangle<float> norm) { return Skin::place (norm, art); };
 
-    rollButton.setBounds  (at (L.roll));
     seedLabel.setBounds   (at (L.seedDisplay));
     seedEditor.setBounds  (at (L.seedEntry));
     goButton.setBounds    (at (L.go));
@@ -300,6 +311,7 @@ void GambleSynthEditor::layoutFromSkin (juce::Rectangle<int> art)
     chaosButton.setBounds (at (L.chaos));
     meter.setBounds       (at (L.meter));
     rollButton.setBounds  (at (L.lever));      // the lever *is* the roll button
+    keyboard.setBounds    (at (L.keyboard));   // shows through the JACKPOT window
 
     for (int k = 0; k < reels.size(); ++k)
         reels[k]->setBounds (at (L.reel (k)));
@@ -310,7 +322,8 @@ void GambleSynthEditor::layoutFromSkin (juce::Rectangle<int> art)
     for (int k = 3; k < lockButtons.size(); ++k)
         lockButtons[k]->setBounds ({});          // reels 4 and 5 have no window
 
-    keyboard.setKeyWidth (juce::jmax (14.0f, (float) keyboard.getWidth() / 21.0f));
+    // Three octaves across the window, whatever size it is drawn at.
+    keyboard.setKeyWidth (juce::jmax (10.0f, (float) keyboard.getWidth() / 21.0f));
 }
 
 void GambleSynthEditor::layoutPlain()

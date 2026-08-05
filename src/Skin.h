@@ -58,23 +58,28 @@ namespace Skin
         // The lever: knob measured at 798,319; the stem runs down to y=851.
         juce::Rectangle<float> lever { px (758.0f, 300.0f, 112.0f, 560.0f) };
 
-        // The JACKPOT panel carries everything to do with the seed.
-        juce::Rectangle<float> seedDisplay { px (215.0f, 800.0f, 425.0f,  86.0f) };
-        juce::Rectangle<float> seedEntry   { px (215.0f, 900.0f, 250.0f,  62.0f) };
-        juce::Rectangle<float> go          { px (480.0f, 900.0f, 160.0f,  62.0f) };
+        // The JACKPOT window is a real cut-out, and the keyboard shows through
+        // it — drawn beneath the cabinet so the frame overlaps the keys. The
+        // banner decal is opaque down to y=856, so the keys start below it and
+        // the whole window gets a dark backing rather than raw backdrop.
+        juce::Rectangle<float> jackpotWindow { px (152.0f, 741.0f, 545.0f, 251.0f) };
+        juce::Rectangle<float> keyboard      { px (158.0f, 858.0f, 533.0f, 128.0f) };
+        juce::Rectangle<float> coinTray      { px (272.0f, 1038.0f, 312.0f, 133.0f) };
 
-        // The coin tray at the bottom.
-        juce::Rectangle<float> meter { px (272.0f, 1038.0f, 312.0f, 133.0f) };
+        // The coin tray gathers everything to do with the seed.
+        juce::Rectangle<float> seedDisplay { px (282.0f, 1044.0f, 292.0f, 42.0f) };
+        juce::Rectangle<float> seedEntry   { px (282.0f, 1092.0f, 188.0f, 40.0f) };
+        juce::Rectangle<float> go          { px (478.0f, 1092.0f,  96.0f, 40.0f) };
 
-        // The WINS strip above the reels, left of the 777 graphic.
-        juce::Rectangle<float> undo  { px (150.0f, 285.0f,  74.0f, 60.0f) };
-        juce::Rectangle<float> redo  { px (232.0f, 285.0f,  74.0f, 60.0f) };
-        juce::Rectangle<float> save  { px (150.0f, 668.0f, 150.0f, 48.0f) };
-        juce::Rectangle<float> load  { px (310.0f, 668.0f, 150.0f, 48.0f) };
-        juce::Rectangle<float> chaos { px (470.0f, 668.0f, 180.0f, 48.0f) };
+        // The WINS strip up top carries the transport and the meter.
+        juce::Rectangle<float> undo  { px (160.0f, 300.0f,  70.0f, 56.0f) };
+        juce::Rectangle<float> redo  { px (238.0f, 300.0f,  70.0f, 56.0f) };
+        juce::Rectangle<float> meter { px (540.0f, 306.0f, 162.0f, 44.0f) };
 
-        // No keyboard on the cabinet, so it lives below it - see keyboardStrip.
-        juce::Rectangle<float> roll { px (272.0f, 1038.0f, 312.0f, 133.0f) };
+        // The band between the reels and the window.
+        juce::Rectangle<float> save  { px (152.0f, 664.0f, 170.0f, 52.0f) };
+        juce::Rectangle<float> load  { px (334.0f, 664.0f, 170.0f, 52.0f) };
+        juce::Rectangle<float> chaos { px (516.0f, 664.0f, 180.0f, 52.0f) };
     };
 
     inline const Layout& layout()

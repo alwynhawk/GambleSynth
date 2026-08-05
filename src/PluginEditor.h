@@ -55,6 +55,26 @@ private:
     GambleSynthProcessor& proc;
 };
 
+// Draws the cabinet on top of the keyboard, so the keys show through the
+// JACKPOT cut-out with the frame overlapping them. Mouse-transparent, so
+// clicking a key still reaches the keyboard underneath.
+struct MachineOverlay : juce::Component
+{
+    explicit MachineOverlay (const juce::Image& art) : image (art)
+    {
+        setInterceptsMouseClicks (false, false);
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        if (image.isValid())
+            g.drawImage (image, getLocalBounds().toFloat(),
+                         juce::RectanglePlacement::stretchToFit, false);
+    }
+
+    const juce::Image& image;
+};
+
 class GambleSynthEditor : public juce::AudioProcessorEditor
 {
 public:
@@ -119,6 +139,7 @@ private:
     // none, in which case the plain drawn UI is used instead.
     juce::Image skin;
     juce::Image backdrop;              // fills the window behind the cabinet
+    std::unique_ptr<MachineOverlay> overlay;
     juce::Rectangle<int> artArea;      // where the artwork is actually drawn
     juce::OwnedArray<ReelDisplay> reels;
 
