@@ -68,17 +68,17 @@ namespace Skin
         juce::Rectangle<float> keyboard      { px (144.0f, 741.0f, 561.0f, 249.0f) };
         juce::Rectangle<float> coinTray      { px (272.0f, 1038.0f, 312.0f, 133.0f) };
 
-        // The coin tray gathers everything to do with the seed.
-        juce::Rectangle<float> seedDisplay { px (282.0f, 1044.0f, 292.0f, 42.0f) };
-        juce::Rectangle<float> seedEntry   { px (282.0f, 1092.0f, 188.0f, 40.0f) };
-        juce::Rectangle<float> go          { px (478.0f, 1092.0f,  96.0f, 40.0f) };
+        // The middle row is 306..341, and the WINS/777 graphic occupies
+        // x=335..522 of it, so the controls live in the clear spans either
+        // side: transport and seed on the left, meter on the right.
+        juce::Rectangle<float> undo      { px (158.0f, 310.0f,  32.0f, 27.0f) };
+        juce::Rectangle<float> redo      { px (194.0f, 310.0f,  32.0f, 27.0f) };
+        juce::Rectangle<float> seedEntry { px (232.0f, 310.0f, 100.0f, 27.0f) };
+        juce::Rectangle<float> go        { px (  0.0f,   0.0f,   0.0f,  0.0f) };  // folded into the box
+        juce::Rectangle<float> meter     { px (525.0f, 310.0f, 182.0f, 27.0f) };
 
-        // The WINS strip up top carries the transport and the meter.
-        juce::Rectangle<float> undo  { px (160.0f, 300.0f,  70.0f, 56.0f) };
-        juce::Rectangle<float> redo  { px (238.0f, 300.0f,  70.0f, 56.0f) };
-        // The strip's ruled lines sit at y=305 and y=341, so the middle row is
-        // 306..341. Centred in it, and a shade narrower.
-        juce::Rectangle<float> meter { px (548.0f, 310.0f, 150.0f, 27.0f) };
+        // The coin tray is the big readout, like a payout window.
+        juce::Rectangle<float> seedDisplay { px (282.0f, 1060.0f, 292.0f, 60.0f) };
 
         // The band between the reels and the window.
         juce::Rectangle<float> save  { px (152.0f, 664.0f, 170.0f, 52.0f) };

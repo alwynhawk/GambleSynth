@@ -128,18 +128,26 @@ struct SkinnedLookAndFeel : juce::LookAndFeel_V4
     void drawButtonBackground (juce::Graphics& g, juce::Button& b, const juce::Colour&,
                                bool highlighted, bool down) override
     {
+        // A button with no label is an invisible hotspot over the artwork - the
+        // lever, for one. Drawing a plate or a hover rule around it would put a
+        // box on top of the drawing it is meant to be part of.
+        if (b.getButtonText().isEmpty())
+            return;
+
         auto r = b.getLocalBounds().toFloat().reduced (0.5f);
+        const bool onLight = (bool) b.getProperties()["onLightPanel"];
+        const auto rule = onLight ? juce::Colours::black : Theme::gold();
 
         if (b.getToggleState() || down)          // engaged: a dark plate + gold rule
         {
-            g.setColour (juce::Colours::black.withAlpha (0.62f));
+            g.setColour ((onLight ? juce::Colours::black : juce::Colours::black).withAlpha (onLight ? 0.16f : 0.62f));
             g.fillRect (r);
-            g.setColour (Theme::gold());
+            g.setColour (rule);
             g.drawRect (r, 1.5f);
         }
         else if (highlighted)
         {
-            g.setColour (Theme::gold().withAlpha (0.5f));
+            g.setColour (rule.withAlpha (0.5f));
             g.drawRect (r, 1.0f);
         }
     }
@@ -151,8 +159,21 @@ struct SkinnedLookAndFeel : juce::LookAndFeel_V4
 
         const float alpha = b.isEnabled() ? 1.0f : 0.4f;
         g.setOpacity (alpha);
-        Theme::drawOutlined (g, text, b.getLocalBounds(), juce::Justification::centred,
-                             getTextButtonFont (b, b.getHeight()));
+
+        // Controls sitting on the pale WINS strip read better as plain dark
+        // text; the white-outlined treatment is for things over the cabinet.
+        if (b.getProperties()["onLightPanel"])
+        {
+            g.setColour (juce::Colours::black);
+            g.setFont (getTextButtonFont (b, b.getHeight()));
+            g.drawText (text, b.getLocalBounds(), juce::Justification::centred, false);
+        }
+        else
+        {
+            Theme::drawOutlined (g, text, b.getLocalBounds(), juce::Justification::centred,
+                                 getTextButtonFont (b, b.getHeight()));
+        }
+
         g.setOpacity (1.0f);
         juce::ignoreUnused (down);
     }
@@ -198,7 +219,15 @@ struct MonoLookAndFeel : juce::LookAndFeel_V4
     void drawButtonBackground (juce::Graphics& g, juce::Button& b, const juce::Colour&,
                                bool highlighted, bool down) override
     {
+        // A button with no label is an invisible hotspot over the artwork - the
+        // lever, for one. Drawing a plate or a hover rule around it would put a
+        // box on top of the drawing it is meant to be part of.
+        if (b.getButtonText().isEmpty())
+            return;
+
         auto r = b.getLocalBounds().toFloat().reduced (0.5f);
+        const bool onLight = (bool) b.getProperties()["onLightPanel"];
+        const auto rule = onLight ? juce::Colours::black : Theme::gold();
         const bool on = b.getToggleState();
         const bool filled = on || down;
 

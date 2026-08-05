@@ -16,7 +16,7 @@ public:
     void paint (juce::Graphics& g) override
     {
         auto outer = getLocalBounds();
-        g.setColour (Theme::ink());
+        g.setColour (juce::Colours::black.withAlpha (0.55f));
         g.drawRect (outer, 1);
 
         auto r = outer.reduced (2).toFloat();
@@ -29,21 +29,16 @@ public:
             const float level = juce::jlimit (0.0f, 1.0f, proc.getMeterLevel (ch));
 
             // Compress the low end so quiet material is still visible.
-            g.setColour (Theme::ink());
+            g.setColour (juce::Colours::black);
             g.fillRect (bar.withWidth (bar.getWidth() * std::sqrt (level)));
         }
 
-        // So an idle meter doesn't read as a broken button.
-        g.setColour (Theme::dim());
-        g.setFont (Theme::mono (9.0f));
-        g.drawText ("OUT", outer.reduced (4, 0), juce::Justification::centredRight, false);
-
-        // No colour to spare, so clipping is shown by inverting the whole meter.
+        // Clipping inverts the whole meter — there is no colour to spare.
         if (proc.isClipping())
         {
-            g.setColour (Theme::ink());
+            g.setColour (juce::Colours::black);
             g.fillRect (outer);
-            g.setColour (Theme::ground());
+            g.setColour (juce::Colours::white);
             g.setFont (Theme::mono ((float) juce::jmin (12, outer.getHeight() - 4), true));
             g.drawText ("CLIP", outer, juce::Justification::centred, false);
         }

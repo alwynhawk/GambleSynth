@@ -26,15 +26,26 @@ GambleSynthEditor::GambleSynthEditor (GambleSynthProcessor& p)
     saveButton.onClick = [this] { proc.saveFavourite(); };
     loadButton.onClick = [this] { proc.loadNextFavourite(); };
     goButton.onClick   = [this] { applyTypedSeed(); };
+    goButton.setVisible (false);      // folded into the seed box (press return)
 
     seedLabel.setJustificationType (juce::Justification::centredRight);
     addAndMakeVisible (seedLabel);
 
     seedEditor.setInputRestrictions (6, "0123456789");
-    seedEditor.setTextToShowWhenEmpty ("SEED", Theme::dim());
+    seedEditor.setTextToShowWhenEmpty ("SEED", juce::Colours::black.withAlpha (0.45f));
     seedEditor.setJustification (juce::Justification::centred);
     seedEditor.setFont (Theme::mono (17.0f));
+    // It sits on the pale WINS strip, so it wants ink on paper, not the white
+    // outlined treatment everything over the cabinet gets.
+    seedEditor.setColour (juce::TextEditor::backgroundColourId, juce::Colours::transparentBlack);
+    seedEditor.setColour (juce::TextEditor::textColourId,       juce::Colours::black);
+    seedEditor.setColour (juce::TextEditor::outlineColourId,    juce::Colours::black.withAlpha (0.55f));
+    seedEditor.setColour (juce::TextEditor::focusedOutlineColourId, juce::Colours::black);
+    seedEditor.setColour (juce::TextEditor::highlightColourId,  juce::Colours::black);
+    seedEditor.setColour (juce::TextEditor::highlightedTextColourId, juce::Colours::white);
+    seedEditor.setColour (juce::CaretComponent::caretColourId,  juce::Colours::black);
     seedEditor.onReturnKey = [this] { applyTypedSeed(); };
+    seedEditor.onEscapeKey = [this] { seedEditor.giveAwayKeyboardFocus(); refresh(); };
     addAndMakeVisible (seedEditor);
 
     // One lock per reel — lit means ROLL leaves that part of the sound alone.
@@ -87,6 +98,9 @@ GambleSynthEditor::GambleSynthEditor (GambleSynthProcessor& p)
         setLookAndFeel (&skinned);
         rollButton.setLookAndFeel (&skinned);
         rollButton.setButtonText ({});
+
+        for (auto* b : { &undoButton, &redoButton, &goButton })
+            b->getProperties().set ("onLightPanel", true);
         seedLabel.setColour (juce::Label::textColourId, Theme::gold());
         seedLabel.setJustificationType (juce::Justification::centred);
     }
@@ -203,6 +217,12 @@ void GambleSynthEditor::refresh()
 
     // With a reel locked the sound is a hybrid, so the seed alone no longer
     // reproduces it — say so rather than showing a code that won't work.
+    // The entry box doubles as the readout — but never while it is being typed
+    // into, or a roll would overwrite what someone is halfway through entering.
+    if (! seedEditor.hasKeyboardFocus (true))
+        seedEditor.setText (juce::String (p.seed).paddedLeft ('0', 6),
+                            juce::dontSendNotification);
+
     seedLabel.setText ("SEED " + juce::String (p.seed).paddedLeft ('0', 6)
                            + (proc.anyReelLocked() ? "*" : "")
                            + (p.chaos ? "  CHAOS" : "")
