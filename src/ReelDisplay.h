@@ -1,6 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
+#include "Fruit.h"
 
 // One window of the machine. Each reel shows a symbol standing for one third of
 // the sound, so the three of them read as "what did I just land on" without ever
@@ -57,7 +58,9 @@ public:
             return;
         }
 
-        drawSymbol (g, r.reduced (r.getWidth() * 0.18f));
+        // Back layer: the lottery symbol. Front layer: what the sound is.
+        drawFruit (g, r);
+        drawSymbol (g, r.reduced (r.getWidth() * 0.22f));
     }
 
 private:
@@ -110,6 +113,37 @@ private:
         for (const auto& f : fx)
             if (f.amount > loudest) { loudest = f.amount; best = f.symbol; }
         return best;
+    }
+
+   #if GAMBLESYNTH_HAS_ASSETS
+    static juce::Image fruitImage (Fruit f)
+    {
+        switch (f)
+        {
+            case Fruit::Cherry: return juce::ImageCache::getFromMemory (BinaryData::cherry_png, BinaryData::cherry_pngSize);
+            case Fruit::Lemon:  return juce::ImageCache::getFromMemory (BinaryData::lemon_png,  BinaryData::lemon_pngSize);
+            case Fruit::Orange: return juce::ImageCache::getFromMemory (BinaryData::orange_png, BinaryData::orange_pngSize);
+            case Fruit::Apple:  return juce::ImageCache::getFromMemory (BinaryData::apple_png,  BinaryData::apple_pngSize);
+            case Fruit::Grape:  return juce::ImageCache::getFromMemory (BinaryData::grape_png,  BinaryData::grape_pngSize);
+            default:            return juce::ImageCache::getFromMemory (BinaryData::seven_png,  BinaryData::seven_pngSize);
+        }
+    }
+   #endif
+
+    void drawFruit (juce::Graphics& g, juce::Rectangle<float> r) const
+    {
+       #if GAMBLESYNTH_HAS_ASSETS
+        const auto img = fruitImage (proc.getFruitSpin().symbol[(int) kind]);
+        if (! img.isValid()) return;
+
+        // Square, centred, filling most of the window — it is the backdrop the
+        // sound glyph sits on, so it wants to be big.
+        const float side = juce::jmin (r.getWidth(), r.getHeight()) * 0.82f;
+        g.drawImage (img, juce::Rectangle<float> (side, side).withCentre (r.getCentre()),
+                     juce::RectanglePlacement::centred, false);
+       #else
+        juce::ignoreUnused (g, r);
+       #endif
     }
 
     // Symbols are built as paths so they can be stroked black and filled white,

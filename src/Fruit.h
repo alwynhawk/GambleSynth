@@ -12,7 +12,7 @@
 // (An earlier attempt derived the fruit from the sound. Measuring 6000 rolls
 // showed one symbol landing 41% of the time on one reel and another 1.5% — the
 // mapping needed rebalancing every time the engine changed. Hence this.)
-enum class Fruit { Cherry = 0, Lemon, Bell, Seven, Plum, Bar, NumFruits };
+enum class Fruit { Cherry = 0, Lemon, Orange, Apple, Grape, Seven, NumFruits };
 
 inline const char* fruitName (Fruit f)
 {
@@ -20,16 +20,16 @@ inline const char* fruitName (Fruit f)
     {
         case Fruit::Cherry: return "cherry";
         case Fruit::Lemon:  return "lemon";
-        case Fruit::Bell:   return "bell";
-        case Fruit::Seven:  return "seven";
-        case Fruit::Plum:   return "plum";
-        default:            return "bar";
+        case Fruit::Orange: return "orange";
+        case Fruit::Apple:  return "apple";
+        case Fruit::Grape:  return "grape";
+        default:            return "seven";
     }
 }
 
 struct FruitSpin
 {
-    Fruit symbol[3] { Fruit::Cherry, Fruit::Lemon, Fruit::Bell };
+    Fruit symbol[3] { Fruit::Cherry, Fruit::Lemon, Fruit::Orange };
 
     // 3 = jackpot, 2 = near miss, 1 = nothing.
     int matches() const
