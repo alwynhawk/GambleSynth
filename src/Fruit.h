@@ -50,7 +50,11 @@ struct FruitSpin
 class FruitLottery
 {
 public:
-    static constexpr float JackpotChance  = 0.01f;   // 1 in 100
+    // 1 in 100 turned out to be too rare to actually experience: a session is
+    // a few dozen pulls, so most of them never saw one. 1 in 40 lands about
+    // once per decent session, which is often enough to be a thing that happens
+    // and rare enough to still register.
+    static constexpr float JackpotChance  = 0.025f;  // 1 in 40
     static constexpr float NearMissChance = 0.25f;
 
     FruitSpin spin()
