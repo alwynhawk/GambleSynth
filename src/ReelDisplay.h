@@ -41,14 +41,12 @@ public:
     void paint (juce::Graphics& g) override
     {
         auto r = getLocalBounds().toFloat();
-
-        g.setColour (juce::Colour (0xff0a0a0a));
-        g.fillRect (r);
+        drawReelStrip (g, r);
 
         // A spinning reel is a blur of passing symbols, not a symbol.
         if (spinning)
         {
-            g.setColour (juce::Colours::white.withAlpha (0.6f));
+            g.setColour (juce::Colours::black.withAlpha (0.28f));
             const float band = r.getHeight() / 5.0f;
             for (int i = -1; i < 6; ++i)
             {
@@ -58,9 +56,7 @@ public:
             return;
         }
 
-        // Back layer: the lottery symbol. Front layer: what the sound is.
         drawFruit (g, r);
-        drawSymbol (g, r.reduced (r.getWidth() * 0.22f));
     }
 
 private:
@@ -130,15 +126,38 @@ private:
     }
    #endif
 
+    // A real reel is a paper strip wrapped round a drum, so it is cream rather
+    // than black and falls off in brightness where the cylinder curves away.
+    // That curvature is what makes it read as a machine instead of a screen.
+    static void drawReelStrip (juce::Graphics& g, juce::Rectangle<float> r)
+    {
+        juce::ColourGradient drum (juce::Colour (0xff8b8477), r.getX(), r.getY(),
+                                   juce::Colour (0xff8b8477), r.getX(), r.getBottom(), false);
+        drum.addColour (0.18, juce::Colour (0xfff4efe3));
+        drum.addColour (0.50, juce::Colour (0xfffcf8ee));
+        drum.addColour (0.82, juce::Colour (0xfff4efe3));
+        g.setGradientFill (drum);
+        g.fillRect (r);
+
+        // The symbols above and below are just cresting the edge of the drum.
+        g.setColour (juce::Colours::black.withAlpha (0.22f));
+        g.fillRect (r.getX(), r.getY() + r.getHeight() * 0.055f, r.getWidth(), 1.5f);
+        g.fillRect (r.getX(), r.getBottom() - r.getHeight() * 0.055f, r.getWidth(), 1.5f);
+    }
+
     void drawFruit (juce::Graphics& g, juce::Rectangle<float> r) const
     {
        #if GAMBLESYNTH_HAS_ASSETS
         const auto img = fruitImage (proc.getFruitSpin().symbol[(int) kind]);
         if (! img.isValid()) return;
 
+        // drawImage inherits the current brush's opacity, and the strip above
+        // leaves it part-transparent from drawing its divider lines.
+        g.setColour (juce::Colours::white);
+
         // Square, centred, filling most of the window — it is the backdrop the
         // sound glyph sits on, so it wants to be big.
-        const float side = juce::jmin (r.getWidth(), r.getHeight()) * 0.82f;
+        const float side = juce::jmin (r.getWidth(), r.getHeight()) * 0.86f;
         g.drawImage (img, juce::Rectangle<float> (side, side).withCentre (r.getCentre()),
                      juce::RectanglePlacement::centred, false);
        #else
