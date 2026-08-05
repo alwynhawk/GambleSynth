@@ -9,7 +9,34 @@ namespace Theme
     inline juce::Colour ink()    { return juce::Colour (0xffffffff); }
     inline juce::Colour ground() { return juce::Colour (0xff000000); }
     inline juce::Colour dim()    { return juce::Colour (0xff6e6e6e); }   // disabled / hints
-    inline juce::Colour gold()   { return juce::Colour (0xffd6b25e); }   // over artwork
+    inline juce::Colour gold()   { return juce::Colour (0xffd6b25e); }   // legacy accent
+
+    // Everything drawn over the cabinet is white with a heavy black outline, so
+    // it stays readable whatever it happens to be sitting on. Outlining by
+    // converting to a path and stroking it beats stamping offset copies: the
+    // weight scales with the text and the corners stay clean.
+    inline void drawOutlined (juce::Graphics& g, const juce::String& text,
+                              juce::Rectangle<int> area, juce::Justification just,
+                              const juce::Font& font, float outline = 0.0f)
+    {
+        if (text.isEmpty()) return;
+
+        juce::GlyphArrangement ga;
+        ga.addFittedText (font, text,
+                          (float) area.getX(), (float) area.getY(),
+                          (float) area.getWidth(), (float) area.getHeight(),
+                          just, 1);
+        juce::Path path;
+        ga.createPath (path);
+
+        const float w = outline > 0.0f ? outline
+                                       : juce::jmax (2.5f, font.getHeight() * 0.22f);
+        g.setColour (juce::Colours::black);
+        g.strokePath (path, juce::PathStrokeType (w, juce::PathStrokeType::curved,
+                                                     juce::PathStrokeType::rounded));
+        g.setColour (juce::Colours::white);
+        g.fillPath (path);
+    }
 
     inline juce::Font mono (float height, bool bold = false)
     {
@@ -77,12 +104,12 @@ struct SkinnedLookAndFeel : juce::LookAndFeel_V4
 {
     SkinnedLookAndFeel()
     {
-        setColour (juce::Label::textColourId,                 Theme::gold());
+        setColour (juce::Label::textColourId,                 juce::Colours::white);
         setColour (juce::TextEditor::backgroundColourId,      juce::Colours::black.withAlpha (0.55f));
-        setColour (juce::TextEditor::textColourId,            Theme::gold());
-        setColour (juce::TextEditor::outlineColourId,         Theme::gold().withAlpha (0.5f));
-        setColour (juce::TextEditor::focusedOutlineColourId,  Theme::gold());
-        setColour (juce::TextEditor::highlightColourId,       Theme::gold());
+        setColour (juce::TextEditor::textColourId,            juce::Colours::white);
+        setColour (juce::TextEditor::outlineColourId,         juce::Colours::white.withAlpha (0.6f));
+        setColour (juce::TextEditor::focusedOutlineColourId,  juce::Colours::white);
+        setColour (juce::TextEditor::highlightColourId,       juce::Colours::white);
         setColour (juce::TextEditor::highlightedTextColourId, juce::Colours::black);
         setColour (juce::CaretComponent::caretColourId,       Theme::gold());
     }
@@ -122,19 +149,22 @@ struct SkinnedLookAndFeel : juce::LookAndFeel_V4
         const auto text = b.getButtonText();
         if (text.isEmpty()) return;              // invisible hotspots draw nothing
 
-        g.setFont (getTextButtonFont (b, b.getHeight()));
+        const float alpha = b.isEnabled() ? 1.0f : 0.4f;
+        g.setOpacity (alpha);
+        Theme::drawOutlined (g, text, b.getLocalBounds(), juce::Justification::centred,
+                             getTextButtonFont (b, b.getHeight()));
+        g.setOpacity (1.0f);
+        juce::ignoreUnused (down);
+    }
 
-        // A dark outline keeps the label readable over whatever it sits on.
-        g.setColour (juce::Colours::black.withAlpha (0.8f));
-        for (int dx = -1; dx <= 1; ++dx)
-            for (int dy = -1; dy <= 1; ++dy)
-                if (dx || dy)
-                    g.drawText (text, b.getLocalBounds().translated (dx, dy),
-                                juce::Justification::centred, false);
+    void drawLabel (juce::Graphics& g, juce::Label& label) override
+    {
+        if (label.isBeingEdited()) { juce::LookAndFeel_V4::drawLabel (g, label); return; }
 
-        g.setColour (b.isEnabled() ? (down ? juce::Colours::white : Theme::gold())
-                                   : Theme::gold().withAlpha (0.35f));
-        g.drawText (text, b.getLocalBounds(), juce::Justification::centred, false);
+        Theme::drawOutlined (g, label.getText(),
+                             label.getLocalBounds().reduced (2, 0),
+                             label.getJustificationType(),
+                             getLabelFont (label));
     }
 };
 
