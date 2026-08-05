@@ -262,6 +262,17 @@ int main (int argc, char** argv)
         auto runNotes = [&] (GambleSynthProcessor& pr, int blockSize, int blocks)
         {
             juce::AudioBuffer<float> work (2, blockSize);
+
+            // Let any pending roll cut finish first. A note struck during the
+            // fade-out briefly renders the *previous* patch, which would make
+            // this measure the sound the processor happened to start on.
+            for (int b = 0; b < 4; ++b)
+            {
+                work.clear();
+                juce::MidiBuffer empty;
+                pr.processBlock (work, empty);
+            }
+
             float peak = 0.0f;
             for (int b = 0; b < blocks; ++b)
             {
@@ -306,16 +317,27 @@ int main (int argc, char** argv)
             juce::MemoryBlock state;
             donor.getStateInformation (state);
 
-            GambleSynthProcessor pr;
-            pr.setStateInformation (state.getData(), (int) state.getSize());
-            pr.setPlayConfigDetails (0, 2, sr, block);
-            pr.prepareToPlay (sr, block);
+            // Restore before preparing (how a host reopens a project)...
+            GambleSynthProcessor early;
+            early.setStateInformation (state.getData(), (int) state.getSize());
+            early.setPlayConfigDetails (0, 2, sr, block);
+            early.prepareToPlay (sr, block);
+            const float peakEarly = runNotes (early, block, 60);
 
-            const float peak = runNotes (pr, block, 60);
-            const bool ok = peak > 0.01f;
+            // ...and after, which is the ordering that definitely works. What
+            // matters is that the two agree; asserting an absolute level here
+            // would just be asserting that one particular seed is loud.
+            GambleSynthProcessor late;
+            late.setPlayConfigDetails (0, 2, sr, block);
+            late.prepareToPlay (sr, block);
+            late.setStateInformation (state.getData(), (int) state.getSize());
+            const float peakLate = runNotes (late, block, 60);
+
+            const bool ok = std::abs (peakEarly - peakLate) < 0.02f;
             allOk = allOk && ok;
             std::cout << "state before prepare: " << (ok ? "PASS" : "FAIL")
-                      << "  peak=" << juce::String (peak, 4) << std::endl;
+                      << "  early=" << juce::String (peakEarly, 4)
+                      << "  late=" << juce::String (peakLate, 4) << std::endl;
         }
 
         // 3. A block larger than the one prepared for. Hosts do this when the
