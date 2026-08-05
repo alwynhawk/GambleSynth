@@ -4,6 +4,40 @@
 // All synth parameters for one sound. Plain data; the Randomizer fills it,
 // the voices read it. Kept as simple values so a "patch" is trivial to
 // copy, save, and (later) serialise.
+// What a modulator can move. Every one of these is voice-local on purpose, so
+// modulation is per-note rather than one global wobble across the whole chord.
+enum ModDest
+{
+    ModNone = 0,
+    ModPitch,        // +/- semitones
+    ModCutoff,       // +/- octaves
+    ModAmp,          // tremolo, or a gate at full depth
+    ModPulseWidth,
+    ModFmAmount,     // moves ring / sync / FM depth
+    ModPan,
+    ModDetune,       // unison spread
+    ModResonance,
+    ModOsc2Level,    // layer fades in and out
+    ModSubLevel,
+    ModNoise,
+    NumModDests
+};
+
+// Sine and triangle sweep; square trills; ramps sweep and reset; sample & hold
+// steps at random; the walk drifts. The shape is most of the character.
+enum ModShape { ModSine = 0, ModTri, ModSquare, ModRampUp, ModRampDown,
+                ModSampleHold, ModRandomWalk, NumModShapes };
+
+struct ModSlot
+{
+    int   shape   = ModSine;
+    int   dest    = ModNone;
+    float rate    = 4.0f;   // Hz, when free-running
+    float depth   = 0.0f;   // 0..1
+    float phase   = 0.0f;   // 0..1 start offset, so slots don't move in lockstep
+    int   syncDiv = 0;      // note division; 0 = free-running
+};
+
 struct Patch
 {
     struct Osc
@@ -12,8 +46,23 @@ struct Patch
         int   semi  = 0;     // semitone offset
         float fine  = 0.0f;  // fine detune, cents
         float level = 0.7f;  // 0..1
+
+        // 0 = follow the amp envelope. Above that, this oscillator gets its own
+        // decay in seconds — which is how you layer a transient (hammer, pick,
+        // mallet) over a sustained body instead of every layer moving together.
+        float decay = 0.0f;
     };
     Osc osc[3];
+
+    // Three independent modulators.
+    static constexpr int NumMods = 3;
+    ModSlot mod[NumMods];
+
+    // The mod envelope always drives cutoff via filterEnvAmt; this routes it to
+    // one more place, which is how you get pitch blips, evolving FM, and sweeps
+    // that aren't just the filter opening.
+    int   envDest   = ModNone;
+    float envAmount = 0.0f;   // -1..1
 
     // Oscillator interaction mode — this is what makes patches sound different
     // from each other, not just "another subtractive saw".
@@ -33,11 +82,6 @@ struct Patch
     // Envelopes
     float ampA = 0.005f, ampD = 0.20f, ampS = 0.80f, ampR = 0.30f;
     float modA = 0.005f, modD = 0.30f, modS = 0.30f, modR = 0.30f;
-
-    // LFO
-    float lfoRate  = 4.0f;  // Hz
-    float lfoDepth = 0.0f;  // 0..1
-    int   lfoDest  = 1;     // 0 pitch, 1 filter, 2 amp
 
     // Unison (supersaw)
     int   unisonVoices = 1;    // 1..7 detuned copies per oscillator
@@ -78,10 +122,9 @@ struct Patch
     float flangerDepth= 0.5f;  // 0..1
     float flangerFb   = 0.4f;  // 0..1
 
-    // Tempo sync (0 = free-running; otherwise a note division). Only the delay
-    // and the gate tremolo sync — vibrato/PWM/filter wobble sound better free.
+    // Tempo sync for the delay (0 = free-running, else a note division).
+    // Modulators carry their own syncDiv; vibrato and drift stay free on purpose.
     int   delaySyncDiv = 0;
-    int   gateSyncDiv  = 0;
 
     // FX — dynamics
     float compAmount = 0.0f;   // 0..1 macro: threshold + ratio + make-up
@@ -126,7 +169,7 @@ inline void copyReel (Patch& into, const Patch& from, int reel)
     switch (reel)
     {
         case ReelOsc:
-            for (int k = 0; k < 3; ++k) into.osc[k] = from.osc[k];
+            for (int k = 0; k < 3; ++k) into.osc[k] = from.osc[k];   // includes per-osc decay
             into.oscMode = from.oscMode;             into.fmAmount = from.fmAmount;
             into.unisonVoices = from.unisonVoices;   into.unisonDetune = from.unisonDetune;
             into.subWave = from.subWave;             into.subLevel = from.subLevel;
@@ -148,8 +191,8 @@ inline void copyReel (Patch& into, const Patch& from, int reel)
             break;
 
         case ReelMod:
-            into.lfoRate = from.lfoRate;             into.lfoDepth = from.lfoDepth;
-            into.lfoDest = from.lfoDest;             into.gateSyncDiv = from.gateSyncDiv;
+            for (int k = 0; k < Patch::NumMods; ++k) into.mod[k] = from.mod[k];
+            into.envDest = from.envDest;             into.envAmount = from.envAmount;
             into.voiceMode = from.voiceMode;         into.glideTime = from.glideTime;
             into.stereoWidth = from.stereoWidth;
             break;
@@ -191,7 +234,7 @@ inline float syncDivBeats (int div)
 // identical even if the randomizer algorithm changes later. ----
 inline void writePatch (juce::OutputStream& s, const Patch& p)
 {
-    s.writeInt (8); // format version
+    s.writeInt (9); // format version
     for (const auto& o : p.osc)
     {
         s.writeInt (o.wave); s.writeInt (o.semi);
@@ -203,7 +246,6 @@ inline void writePatch (juce::OutputStream& s, const Patch& p)
     s.writeFloat (p.filterEnvAmt); s.writeFloat (p.keytrack);
     s.writeFloat (p.ampA); s.writeFloat (p.ampD); s.writeFloat (p.ampS); s.writeFloat (p.ampR);
     s.writeFloat (p.modA); s.writeFloat (p.modD); s.writeFloat (p.modS); s.writeFloat (p.modR);
-    s.writeFloat (p.lfoRate); s.writeFloat (p.lfoDepth); s.writeInt (p.lfoDest);
     s.writeInt (p.unisonVoices); s.writeFloat (p.unisonDetune);
     s.writeInt (p.subWave); s.writeFloat (p.subLevel); s.writeFloat (p.noiseLevel);
     s.writeFloat (p.pulseWidth); s.writeFloat (p.pwmDepth);
@@ -226,7 +268,16 @@ inline void writePatch (juce::OutputStream& s, const Patch& p)
     s.writeFloat (p.flangerMix); s.writeFloat (p.flangerRate);
     s.writeFloat (p.flangerDepth); s.writeFloat (p.flangerFb);
     s.writeFloat (p.compAmount);
-    s.writeInt (p.delaySyncDiv); s.writeInt (p.gateSyncDiv);   // v8
+    s.writeInt (p.delaySyncDiv);   // v8
+    // v9 — the modulation overhaul
+    for (const auto& m : p.mod)
+    {
+        s.writeInt (m.shape); s.writeInt (m.dest);
+        s.writeFloat (m.rate); s.writeFloat (m.depth);
+        s.writeFloat (m.phase); s.writeInt (m.syncDiv);
+    }
+    for (const auto& o : p.osc) s.writeFloat (o.decay);
+    s.writeInt (p.envDest); s.writeFloat (p.envAmount);
 }
 
 inline Patch readPatch (juce::InputStream& s)
@@ -244,7 +295,6 @@ inline Patch readPatch (juce::InputStream& s)
     p.filterEnvAmt = s.readFloat(); p.keytrack = s.readFloat();
     p.ampA = s.readFloat(); p.ampD = s.readFloat(); p.ampS = s.readFloat(); p.ampR = s.readFloat();
     p.modA = s.readFloat(); p.modD = s.readFloat(); p.modS = s.readFloat(); p.modR = s.readFloat();
-    p.lfoRate = s.readFloat(); p.lfoDepth = s.readFloat(); p.lfoDest = s.readInt();
     p.unisonVoices = s.readInt(); p.unisonDetune = s.readFloat();
     p.subWave = s.readInt(); p.subLevel = s.readFloat(); p.noiseLevel = s.readFloat();
     p.pulseWidth = s.readFloat(); p.pwmDepth = s.readFloat();
@@ -275,7 +325,18 @@ inline Patch readPatch (juce::InputStream& s)
     }
     if (version >= 8)
     {
-        p.delaySyncDiv = s.readInt(); p.gateSyncDiv = s.readInt();
+        p.delaySyncDiv = s.readInt();
+    }
+    if (version >= 9)
+    {
+        for (auto& m : p.mod)
+        {
+            m.shape = s.readInt(); m.dest = s.readInt();
+            m.rate = s.readFloat(); m.depth = s.readFloat();
+            m.phase = s.readFloat(); m.syncDiv = s.readInt();
+        }
+        for (auto& o : p.osc) o.decay = s.readFloat();
+        p.envDest = s.readInt(); p.envAmount = s.readFloat();
     }
     return p;
 }

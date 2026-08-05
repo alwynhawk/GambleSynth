@@ -143,6 +143,9 @@ private:
             add (tag + "level", 0.0f, 1.0f, 0.01f,
                  [k] (const Patch& p) { return p.osc[k].level; },
                  [k] (Patch& p, float v) { p.osc[k].level = v; });
+            add (tag + "decay", 0.0f, 1.0f, 0.005f,     // 0 = follow the amp env
+                 [k] (const Patch& p) { return p.osc[k].decay; },
+                 [k] (Patch& p, float v) { p.osc[k].decay = v; });
         }
 
         addI ("osc mode",    0.0f, 3.0f, 1.0f,  &Patch::oscMode);
@@ -168,10 +171,31 @@ private:
         addM ("mod S", 0.0f,   1.0f, 0.01f,  &Patch::modS);
         addM ("mod R", 0.005f, 4.0f, 0.001f, &Patch::modR, 0.4);
 
-        // LFO
-        addM ("lfo rate",  0.02f, 20.0f, 0.01f, &Patch::lfoRate, 2.0);
-        addM ("lfo depth", 0.0f,  1.0f,  0.01f, &Patch::lfoDepth);
-        addI ("lfo dest",  0.0f,  2.0f,  1.0f,  &Patch::lfoDest);
+        // Modulators. dest: 0 off, 1 pitch, 2 cutoff, 3 amp, 4 pulse width,
+        // 5 fm, 6 pan, 7 detune, 8 resonance, 9 osc2, 10 sub, 11 noise.
+        // shape: 0 sine, 1 tri, 2 square, 3 ramp up, 4 ramp down, 5 s&h, 6 walk.
+        for (int k = 0; k < Patch::NumMods; ++k)
+        {
+            const juce::String tag = "mod" + juce::String (k + 1) + " ";
+            add (tag + "dest", 0.0f, (float) (NumModDests - 1), 1.0f,
+                 [k] (const Patch& p) { return (float) p.mod[k].dest; },
+                 [k] (Patch& p, float v) { p.mod[k].dest = (int) std::round (v); });
+            add (tag + "shape", 0.0f, (float) (NumModShapes - 1), 1.0f,
+                 [k] (const Patch& p) { return (float) p.mod[k].shape; },
+                 [k] (Patch& p, float v) { p.mod[k].shape = (int) std::round (v); });
+            add (tag + "rate", 0.02f, 20.0f, 0.01f,
+                 [k] (const Patch& p) { return p.mod[k].rate; },
+                 [k] (Patch& p, float v) { p.mod[k].rate = v; }, 2.0);
+            add (tag + "depth", 0.0f, 1.0f, 0.01f,
+                 [k] (const Patch& p) { return p.mod[k].depth; },
+                 [k] (Patch& p, float v) { p.mod[k].depth = v; });
+            add (tag + "sync", 0.0f, 7.0f, 1.0f,
+                 [k] (const Patch& p) { return (float) p.mod[k].syncDiv; },
+                 [k] (Patch& p, float v) { p.mod[k].syncDiv = (int) std::round (v); });
+        }
+
+        addI ("env dest",   0.0f, (float) (NumModDests - 1), 1.0f, &Patch::envDest);
+        addM ("env amount", -1.0f, 1.0f, 0.01f, &Patch::envAmount);
 
         // Layers
         addI ("unison",       1.0f, 7.0f,  1.0f,  &Patch::unisonVoices);
@@ -209,7 +233,6 @@ private:
         addM ("delay fb",   0.0f,  0.95f, 0.01f, &Patch::delayFb);
         addM ("delay mix",  0.0f,  1.0f, 0.01f,  &Patch::delayMix);
         addI ("delay sync", 0.0f,  7.0f, 1.0f,   &Patch::delaySyncDiv);
-        addI ("gate sync",  0.0f,  7.0f, 1.0f,   &Patch::gateSyncDiv);
         addM ("reverb size",0.0f,  1.0f, 0.01f,  &Patch::reverbSize);
         addM ("reverb mix", 0.0f,  1.0f, 0.01f,  &Patch::reverbMix);
         addM ("compressor", 0.0f,  1.0f, 0.01f,  &Patch::compAmount);

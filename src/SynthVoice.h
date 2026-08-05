@@ -75,6 +75,17 @@ public:
                 subOsc.reset (&rng);
                 filterL.reset();
                 filterR.reset();
+
+                // Each modulator gets its own stream, keyed on the patch, the
+                // slot and the note, so voices never move in lockstep but a
+                // given seed still renders identically.
+                for (int m = 0; m < Patch::NumMods; ++m)
+                    mods[m].reset ((juce::uint32) (patch.seed * 2654435761u
+                                                   + (juce::uint32) (m * 40503)
+                                                   + (juce::uint32) midiNote),
+                                   patch.mod[m].phase);
+
+                for (auto& e : oscEnv) e = 1.0f;
             }
 
             ampEnv.setParameters ({ patch.ampA, patch.ampD, patch.ampS, patch.ampR });
@@ -130,7 +141,17 @@ public:
         for (int i = 0; i < 3; ++i)
             ratio[i] = std::pow (2.0f, (patch.osc[i].semi + patch.osc[i].fine * 0.01f) / 12.0f);
 
-        const float lfoInc = patch.lfoRate / (float) sr;
+        float modInc[Patch::NumMods];
+        for (int k = 0; k < Patch::NumMods; ++k)
+            modInc[k] = juce::jlimit (0.0f, 0.49f, patch.mod[k].rate / (float) sr);
+
+        // Per-oscillator transient decay, as a per-sample multiplier.
+        float oscEnvCoef[3];
+        for (int k = 0; k < 3; ++k)
+            oscEnvCoef[k] = (patch.osc[k].decay > 0.0005f)
+                          ? (float) std::exp (-1.0 / (patch.osc[k].decay * sr))
+                          : 1.0f;
+
         const float keyOct = patch.keytrack * (noteNumber - 60) / 12.0f;
 
         // Portamento coefficient (per-block); 1.0 = instant (no glide).
@@ -161,22 +182,78 @@ public:
             const float amp = ampEnv.getNextSample();
             const float me  = modEnv.getNextSample();
 
-            // LFO
-            const float lfo = std::sin (lfoPhase * juce::MathConstants<float>::twoPi);
-            lfoPhase += lfoInc; if (lfoPhase >= 1.0f) lfoPhase -= 1.0f;
-            const float lfoPitch  = (patch.lfoDest == 0) ? lfo * patch.lfoDepth * 0.03f : 0.0f;
-            const float lfoFilt   = (patch.lfoDest == 1) ? lfo * patch.lfoDepth : 0.0f;
-            // Amp LFO reaches all the way to silence at full depth — at half
-            // that it could only ever wobble, never gate.
-            const float lfoAmp    = (patch.lfoDest == 2)
-                                  ? juce::jmax (0.0f, 1.0f - patch.lfoDepth * (0.5f - 0.5f * lfo))
-                                  : 1.0f;
+            // ---- Modulation: three slots, summed per destination ----
+            float mPitch = 0.0f, mFilt = 0.0f, mAmp = 1.0f, mPw = 0.0f, mFm = 0.0f;
+            float mPan = 0.0f, mDetune = 0.0f, mRes = 0.0f;
+            float mOsc2 = 0.0f, mSub = 0.0f, mNoise = 0.0f;
 
-            // Pulse width, moved by the LFO when pwmDepth > 0.
-            const float pw = juce::jlimit (0.05f, 0.95f, patch.pulseWidth + patch.pwmDepth * lfo * 0.4f);
+            for (int k = 0; k < Patch::NumMods; ++k)
+            {
+                const auto& slot = patch.mod[k];
+                if (slot.dest == ModNone || slot.depth < 0.001f)
+                    continue;
+
+                const float v = mods[k].next (modInc[k], slot.shape);
+                const float d = slot.depth;
+
+                switch (slot.dest)
+                {
+                    case ModPitch:      mPitch  += v * d * 0.06f;  break;   // +/- ~0.7 semitone
+                    case ModCutoff:     mFilt   += v * d * 2.0f;   break;   // +/- 2 octaves
+                    // Amp reaches silence at full depth, so this can gate and
+                    // not merely wobble.
+                    case ModAmp:        mAmp    *= juce::jmax (0.0f, 1.0f - d * (0.5f - 0.5f * v)); break;
+                    case ModPulseWidth: mPw     += v * d * 0.4f;   break;
+                    case ModFmAmount:   mFm     += v * d * 0.5f;   break;
+                    case ModPan:        mPan    += v * d;          break;
+                    case ModDetune:     mDetune += v * d * 25.0f;  break;
+                    case ModResonance:  mRes    += v * d * 0.4f;   break;
+                    case ModOsc2Level:  mOsc2   += v * d;          break;
+                    case ModSubLevel:   mSub    += v * d * 0.5f;   break;
+                    case ModNoise:      mNoise  += v * d * 0.3f;   break;
+                    default: break;
+                }
+            }
+
+            // The mod envelope's second routing, on top of its cutoff duty.
+            if (patch.envDest != ModNone && std::abs (patch.envAmount) > 0.001f)
+            {
+                const float e = me * patch.envAmount;
+                switch (patch.envDest)
+                {
+                    case ModPitch:      mPitch  += e * 0.25f;  break;   // blips and drops
+                    case ModCutoff:     mFilt   += e * 2.0f;   break;
+                    case ModAmp:        mAmp    *= juce::jlimit (0.0f, 1.0f, 1.0f - e); break;
+                    case ModPulseWidth: mPw     += e * 0.4f;   break;
+                    case ModFmAmount:   mFm     += e * 0.6f;   break;
+                    case ModPan:        mPan    += e;          break;
+                    case ModDetune:     mDetune += e * 25.0f;  break;
+                    case ModResonance:  mRes    += e * 0.4f;   break;
+                    case ModOsc2Level:  mOsc2   += e;          break;
+                    case ModSubLevel:   mSub    += e * 0.5f;   break;
+                    case ModNoise:      mNoise  += e * 0.3f;   break;
+                    default: break;
+                }
+            }
+
+            const float lfoPitch = mPitch;
+            const float lfoFilt  = mFilt;
+            const float lfoAmp   = mAmp;
+
+            const float pw = juce::jlimit (0.05f, 0.95f, patch.pulseWidth + mPw);
 
             // Glide current pitch toward the target note.
             baseFreq += (targetFreq - baseFreq) * glideCoef;
+
+            // Transient layers decay on their own clock.
+            for (int k = 0; k < 3; ++k)
+                if (oscEnvCoef[k] < 1.0f) oscEnv[k] *= oscEnvCoef[k];
+
+            const float lv0 = patch.osc[0].level * oscEnv[0];
+            const float lv1 = juce::jlimit (0.0f, 1.5f, patch.osc[1].level * oscEnv[1] + mOsc2);
+            const float lv2 = patch.osc[2].level * oscEnv[2];
+            const float fmA = juce::jlimit (0.0f, 1.6f, patch.fmAmount + mFm);
+            const float uniDetMod = juce::jmax (0.0f, uniDet + mDetune);
 
             const float pitchMul = 1.0f + lfoPitch;
             const float f0 = baseFreq * ratio[0] * pitchMul;
@@ -191,9 +268,8 @@ public:
                     const float a = osc[0].next (f0, sr, patch.osc[0].wave, rng, 0.0f, pw);
                     const float b = osc[1].next (f1, sr, patch.osc[1].wave, rng, 0.0f, pw);
                     const float ring = a * b;
-                    const float v01 = a * patch.osc[0].level * (1.0f - patch.fmAmount)
-                                      + ring * 1.6f * patch.fmAmount;
-                    const float v2  = osc[2].next (f2, sr, patch.osc[2].wave, rng, 0.0f, pw) * patch.osc[2].level;
+                    const float v01 = a * lv0 * (1.0f - fmA) + ring * 1.6f * fmA;
+                    const float v2  = osc[2].next (f2, sr, patch.osc[2].wave, rng, 0.0f, pw) * lv2;
                     sL = v01 * gL[0] + v2 * gL[2];
                     sR = v01 * gR[0] + v2 * gR[2];
                     break;
@@ -202,11 +278,11 @@ public:
                 {
                     const float master = osc[0].next (f0, sr, patch.osc[0].wave, rng, 0.0f, pw);
                     if (osc[0].wrapped) osc[1].syncReset();
-                    const float slave = osc[1].next (f1 * (1.0f + patch.fmAmount * 3.0f),
+                    const float slave = osc[1].next (f1 * (1.0f + fmA * 3.0f),
                                                      sr, patch.osc[1].wave, rng, 0.0f, pw);
-                    const float v1 = slave * patch.osc[1].level;
-                    const float v0 = master * patch.osc[0].level * 0.3f;
-                    const float v2 = osc[2].next (f2, sr, patch.osc[2].wave, rng, 0.0f, pw) * patch.osc[2].level;
+                    const float v1 = slave * lv1;
+                    const float v0 = master * lv0 * 0.3f;
+                    const float v2 = osc[2].next (f2, sr, patch.osc[2].wave, rng, 0.0f, pw) * lv2;
                     sL = v1 * gL[1] + v0 * gL[0] + v2 * gL[2];
                     sR = v1 * gR[1] + v0 * gR[0] + v2 * gR[2];
                     break;
@@ -215,9 +291,9 @@ public:
                 {
                     const float mod = osc[1].next (f1, sr, patch.osc[1].wave, rng);
                     const float car = osc[0].next (f0, sr, patch.osc[0].wave, rng,
-                                                   mod * patch.fmAmount, pw);
-                    const float v0 = car * patch.osc[0].level;
-                    const float v2 = osc[2].next (f2, sr, patch.osc[2].wave, rng, 0.0f, pw) * patch.osc[2].level * 0.5f;
+                                                   mod * fmA, pw);
+                    const float v0 = car * lv0;
+                    const float v2 = osc[2].next (f2, sr, patch.osc[2].wave, rng, 0.0f, pw) * lv2 * 0.5f;
                     sL = v0 * gL[0] + v2 * gL[2];
                     sR = v0 * gR[0] + v2 * gR[2];
                     break;
@@ -225,25 +301,28 @@ public:
                 default: // normal: three detuned oscillators, each with unison + stereo spread
                 {
                     float t0L = 0, t0R = 0, t1L = 0, t1R = 0, t2L = 0, t2R = 0;
-                    osc[0].nextUnison (f0, sr, patch.osc[0].wave, rng, uni, uniDet, basePan[0], 0.6f, pw, t0L, t0R);
-                    osc[1].nextUnison (f1, sr, patch.osc[1].wave, rng, uni, uniDet, basePan[1], 0.6f, pw, t1L, t1R);
-                    osc[2].nextUnison (f2, sr, patch.osc[2].wave, rng, uni, uniDet, basePan[2], 0.6f, pw, t2L, t2R);
-                    sL = t0L * patch.osc[0].level + t1L * patch.osc[1].level + t2L * patch.osc[2].level;
-                    sR = t0R * patch.osc[0].level + t1R * patch.osc[1].level + t2R * patch.osc[2].level;
+                    osc[0].nextUnison (f0, sr, patch.osc[0].wave, rng, uni, uniDetMod, basePan[0], 0.6f, pw, t0L, t0R);
+                    osc[1].nextUnison (f1, sr, patch.osc[1].wave, rng, uni, uniDetMod, basePan[1], 0.6f, pw, t1L, t1R);
+                    osc[2].nextUnison (f2, sr, patch.osc[2].wave, rng, uni, uniDetMod, basePan[2], 0.6f, pw, t2L, t2R);
+                    sL = t0L * lv0 + t1L * lv1 + t2L * lv2;
+                    sR = t0R * lv0 + t1R * lv1 + t2R * lv2;
                     break;
                 }
             }
 
             // Sub oscillator (one octave down) + noise layer — centred, pre-filter.
-            if (patch.subLevel > 0.0001f)
+            const float subLvl   = juce::jlimit (0.0f, 1.0f, patch.subLevel + mSub);
+            const float noiseLvl = juce::jlimit (0.0f, 1.0f, patch.noiseLevel + mNoise);
+
+            if (subLvl > 0.0001f)
             {
                 const float sub = subOsc.next (baseFreq * 0.5f * pitchMul, sr, patch.subWave, rng, 0.0f, pw)
-                                  * patch.subLevel;
+                                  * subLvl;
                 sL += sub; sR += sub;
             }
-            if (patch.noiseLevel > 0.0001f)
+            if (noiseLvl > 0.0001f)
             {
-                const float nz = (rng.nextFloat() * 2.0f - 1.0f) * patch.noiseLevel;
+                const float nz = (rng.nextFloat() * 2.0f - 1.0f) * noiseLvl;
                 sL += nz; sR += nz;
             }
 
@@ -255,13 +334,22 @@ public:
                          * std::pow (2.0f, me * patch.filterEnvAmt * 4.0f)
                          * std::pow (2.0f, lfoFilt)
                          * velFiltMul;
-            filterL.set (patch.filterModel, patch.filterPoles, cutoff, patch.resonance, patch.filterMorph, sr);
-            filterR.set (patch.filterModel, patch.filterPoles, cutoff, patch.resonance, patch.filterMorph, sr);
+            const float res = juce::jlimit (0.0f, 0.92f, patch.resonance + mRes);
+            filterL.set (patch.filterModel, patch.filterPoles, cutoff, res, patch.filterMorph, sr);
+            filterR.set (patch.filterModel, patch.filterPoles, cutoff, res, patch.filterMorph, sr);
             sL = filterL.process (sL, patch.filterType);
             sR = filterR.process (sR, patch.filterType);
 
             const float g = amp * ampScale * lfoAmp * fadeGain;
             sL *= g; sR *= g;
+
+            if (mPan != 0.0f)          // equal-power sweep across the field
+            {
+                const float a = (juce::jlimit (-1.0f, 1.0f, mPan) + 1.0f) * 0.25f
+                                * juce::MathConstants<float>::pi;
+                sL *= std::cos (a) * 1.414f;
+                sR *= std::sin (a) * 1.414f;
+            }
 
             if (out.getNumChannels() > 1)
             {
@@ -328,6 +416,9 @@ private:
     Oscillator subOsc;
     MultiFilter filterL, filterR;
     juce::Random rng;
+
+    ModOsc mods[Patch::NumMods];
+    float  oscEnv[3] { 1.0f, 1.0f, 1.0f };
 
     int   noteNumber = 60;
     float baseFreq   = 440.0f;

@@ -99,6 +99,7 @@ private:
         }
         applyModifier (p);
         loosen (p);
+        finaliseModulation (p, false);
 
         // Delay on the grid unless the roll wants it loose. Resolved against the
         // host tempo at play time (120 BPM in the standalone).
@@ -107,6 +108,108 @@ private:
 
         p.seed = (int) seed; p.chaos = false;
         return p;
+    }
+
+    // An archetype's primary movement goes straight into slot 0. Shape is chosen
+    // later, once we know the destination.
+    void motion (Patch& p, int dest, float rate, float depth)
+    {
+        p.mod[0].dest  = dest;
+        p.mod[0].rate  = rate;
+        p.mod[0].depth = depth;
+    }
+
+    // ---- Modulation. Archetypes set their primary movement in slot 0 via
+    // motion(); the other two slots are rolled here. This is where most of a
+    // patch's *motion* variety comes from — shape matters more than rate, and a
+    // destination nobody expects (pan, FM index, detune) is what stops two
+    // patches sharing a silhouette. ----
+    void finaliseModulation (Patch& p, bool wild)
+    {
+        auto& m0 = p.mod[0];
+        if (m0.depth < 0.001f) m0.dest = ModNone;
+        m0.phase = f (0.0f, 1.0f);
+
+        // Vibrato and tremolo want a smooth shape; anything else can be strange.
+        if (m0.dest == ModPitch)
+            m0.shape = chance (0.75f) ? ModSine : ModTri;
+        else if (m0.dest == ModAmp)
+            m0.shape = chance (0.45f) ? ModSquare : (chance (0.5f) ? ModSine : ModRampDown);
+        else
+            m0.shape = pickShape (wild);
+
+        // PWM used to be its own hardwired thing; it is just a modulator.
+        int next = 1;
+        if (p.pwmDepth > 0.01f && next < Patch::NumMods)
+        {
+            auto& m = p.mod[next++];
+            m.dest  = ModPulseWidth;
+            m.depth = p.pwmDepth;
+            m.rate  = f (0.08f, 3.0f);
+            m.shape = chance (0.6f) ? ModSine : ModTri;
+            m.phase = f (0.0f, 1.0f);
+        }
+
+        // Fill whatever is left. Wild rolls take any destination; tame ones stay
+        // away from the two that most easily wreck a sound.
+        const float chanceOfMore = wild ? 0.85f : 0.55f;
+        for (; next < Patch::NumMods; ++next)
+        {
+            if (! chance (chanceOfMore)) break;
+
+            auto& m = p.mod[next];
+            m.dest  = pickDest (wild);
+            m.shape = pickShape (wild);
+            m.phase = f (0.0f, 1.0f);
+
+            // Slow drift and fast flutter are different instruments; pick a lane
+            // rather than always landing in the middle.
+            m.rate = chance (0.45f) ? f (0.03f, 0.9f) : f (1.5f, wild ? 18.0f : 9.0f);
+
+            // Pitch is the one destination where a big depth is just out of tune.
+            m.depth = (m.dest == ModPitch) ? f (0.02f, wild ? 0.5f : 0.18f)
+                                           : f (0.15f, wild ? 1.0f : 0.7f);
+
+            // A stepped or square modulator on the grid reads as rhythm.
+            if ((m.shape == ModSampleHold || m.shape == ModSquare) && chance (0.5f))
+                m.syncDiv = i (1, 5);
+        }
+
+        // The mod envelope's second destination: pitch drops, FM sweeps, filters
+        // that do something other than open.
+        if (chance (wild ? 0.6f : 0.35f))
+        {
+            p.envDest   = pickDest (wild);
+            p.envAmount = f (-1.0f, 1.0f);
+        }
+
+        // Transient layers: a fast-decaying oscillator over a sustained one is
+        // how a struck instrument is built.
+        if (chance (wild ? 0.5f : 0.3f))
+        {
+            const int which = chance (0.6f) ? 1 : 2;
+            p.osc[which].decay = f (0.01f, 0.35f);
+        }
+    }
+
+    int pickShape (bool wild)
+    {
+        if (! wild && chance (0.45f)) return chance (0.6f) ? ModSine : ModTri;
+        return i (0, NumModShapes - 1);
+    }
+
+    int pickDest (bool wild)
+    {
+        for (int tries = 0; tries < 8; ++tries)
+        {
+            const int d = i (1, NumModDests - 1);
+            // Amp and pitch are the two that turn a good sound bad fastest, so
+            // tame rolls only take them occasionally.
+            if (! wild && (d == ModAmp || d == ModPitch) && ! chance (0.3f))
+                continue;
+            return d;
+        }
+        return ModCutoff;
     }
 
     // ---- Guard rails, loosened. Archetypes used to keep every roll well inside
@@ -127,7 +230,7 @@ private:
         spread (p.ampD,   0.01f,  3.0f,     0.7f);
         spread (p.ampR,   0.02f,  3.5f,     0.7f);
         spread (p.modD,   0.01f,  3.0f,     0.7f);
-        spread (p.lfoRate, 0.03f, 18.0f,    0.6f);
+        spread (p.mod[0].rate, 0.03f, 18.0f, 0.6f);
 
         p.resonance    = juce::jlimit (0.0f,  0.85f, p.resonance + f (-0.12f, 0.28f));
         p.filterEnvAmt = juce::jlimit (-1.0f, 1.0f,  p.filterEnvAmt + f (-0.25f, 0.25f));
@@ -185,8 +288,8 @@ private:
 
             case 1:   // gated tremolo — rhythmic chop, locked to the grid so it
                       // lands as a trance gate instead of a wobble against the beat
-                p.lfoDest = 2; p.lfoRate = f (6.0f, 14.0f); p.lfoDepth = f (0.6f, 1.0f);
-                p.gateSyncDiv = i (1, 3);          // 1/16, 1/8T or 1/8
+                motion (p, ModAmp, f (6.0f, 14.0f), f (0.6f, 1.0f));
+                p.mod[0].syncDiv = i (1, 3);       // 1/16, 1/8T or 1/8
                 return "gated";
 
             case 2:   // reverse swell — fades in, hangs on; kills any percussive identity
@@ -223,7 +326,7 @@ private:
                 return "drift";
 
             case 8:   // broken tape — slow deep pitch warble
-                p.lfoDest = 0; p.lfoRate = f (0.15f, 0.8f); p.lfoDepth = f (0.5f, 1.0f);
+                motion (p, ModPitch, f (0.15f, 0.8f), f (0.5f, 1.0f));
                 return "tape";
 
             case 9:   // clang — ring mod against an inharmonic partner
@@ -303,7 +406,7 @@ private:
         p.ampA = f (0.001f, 1.5f); p.ampD = f (0.05f, 2.0f); p.ampS = f (0.0f, 1.0f); p.ampR = f (0.05f, 3.0f);
         p.modA = f (0.001f, 1.5f); p.modD = f (0.05f, 2.0f); p.modS = f (0.0f, 1.0f); p.modR = f (0.05f, 2.0f);
 
-        p.lfoDest = i (0, 2); p.lfoRate = f (0.05f, 15.0f); p.lfoDepth = f (0.0f, 1.0f);
+        motion (p, i (ModPitch, ModAmp), f (0.05f, 15.0f), f (0.0f, 1.0f));
 
         p.drive       = f (0.0f, 1.0f);
         p.delayMix    = chance (0.6f) ? f (0.0f, 0.5f) : 0.0f;
@@ -327,6 +430,7 @@ private:
         p.delaySyncDiv = chance (0.5f) ? i (1, 7) : 0;
         p.master      = f (0.6f, 0.85f); // master limiter still protects output
 
+        finaliseModulation (p, true);
         p.archetypeName = "Chaos";
         p.seed = (int) seed; p.chaos = true;
         return p;
@@ -449,7 +553,7 @@ private:
         p.cutoff = f (500.f, 2500.f);
         p.filterEnvAmt = f (0.1f, 0.5f);
         p.modA = f (0.4f, 1.2f); p.modD = f (0.5f, 1.5f); p.modS = f (0.4f, 0.8f);
-        p.lfoDest = 1; p.lfoRate = f (0.1f, 1.5f); p.lfoDepth = f (0.1f, 0.4f);
+        motion (p, ModCutoff, f (0.1f, 1.5f), f (0.1f, 0.4f));
         p.reverbSize = f (0.6f, 0.9f); p.reverbMix = f (0.3f, 0.5f);
         p.delayMix = chance (0.4f) ? f (0.1f, 0.25f) : 0.0f; p.delayTime = f (0.3f, 0.6f); p.delayFb = f (0.2f, 0.4f);
         p.stereoWidth = f (0.7f, 0.95f); p.chorusMix = f (0.35f, 0.6f);      // wide & lush
@@ -517,7 +621,7 @@ private:
         p.filterType = 0;
         p.cutoff = f (1200.f, 4500.f);
         p.filterEnvAmt = f (0.1f, 0.4f);
-        p.lfoDest = 0; p.lfoRate = f (4.0f, 7.0f); p.lfoDepth = f (0.15f, 0.45f); // vibrato
+        motion (p, ModPitch, f (4.0f, 7.0f), f (0.15f, 0.45f));   // vibrato
         p.reverbMix = f (0.15f, 0.35f); p.reverbSize = f (0.4f, 0.7f);
         p.delayMix = chance (0.7f) ? f (0.2f, 0.4f) : 0.0f; p.delayTime = f (0.25f, 0.5f); p.delayFb = f (0.3f, 0.5f);
         if (chance (0.4f)) { p.oscMode = 2; p.fmAmount = f (0.15f, 0.5f); } // sync lead
@@ -637,7 +741,7 @@ private:
                 p.ampA = f (0.002f, 0.015f); p.ampD = f (0.4f, 1.0f);
                 p.ampS = f (0.2f, 0.45f);    p.ampR = f (0.2f, 0.6f);
                 p.cutoff = f (1200.f, 3500.f); p.filterEnvAmt = f (0.15f, 0.45f);
-                p.lfoDest = 2; p.lfoRate = f (4.0f, 7.0f); p.lfoDepth = f (0.2f, 0.5f);
+                motion (p, ModAmp, f (4.0f, 7.0f), f (0.2f, 0.5f));
                 p.chorusMix = f (0.1f, 0.35f);
                 p.velToAmp = f (0.45f, 0.8f);
                 p.drive = f (0.15f, 0.45f);
@@ -672,7 +776,7 @@ private:
         p.ampA = f (0.001f, 0.008f); p.ampD = f (0.05f, 0.2f);
         p.ampS = f (0.85f, 1.0f);     p.ampR = f (0.02f, 0.12f);
         p.filterType = 0; p.cutoff = f (2500.f, 9000.f); p.filterEnvAmt = f (0.0f, 0.1f);
-        p.lfoDest = 1; p.lfoRate = f (4.0f, 7.5f); p.lfoDepth = f (0.0f, 0.25f);  // leslie-ish
+        motion (p, ModCutoff, f (4.0f, 7.5f), f (0.0f, 0.25f));   // leslie-ish
         p.chorusMix = f (0.3f, 0.7f);
         p.reverbMix = f (0.15f, 0.4f); p.reverbSize = f (0.4f, 0.8f);
         p.velToAmp = f (0.0f, 0.2f); p.velToFilter = f (0.0f, 0.2f);
@@ -692,7 +796,7 @@ private:
         p.ampS = f (0.8f, 1.0f); p.ampR = f (1.5f, 3.5f);
         p.modA = f (1.0f, 2.5f); p.modD = f (1.0f, 2.5f); p.modS = f (0.5f, 0.9f);
         p.filterType = 0; p.cutoff = f (300.f, 2000.f); p.filterEnvAmt = f (0.2f, 0.6f);
-        p.lfoDest = 1; p.lfoRate = f (0.03f, 0.4f); p.lfoDepth = f (0.3f, 0.8f);
+        motion (p, ModCutoff, f (0.03f, 0.4f), f (0.3f, 0.8f));
         p.unisonVoices = chance (0.5f) ? 5 : 7; p.unisonDetune = f (10.0f, 30.0f);
         p.subLevel = f (0.1f, 0.4f); p.noiseLevel = f (0.0f, 0.08f);
         p.stereoWidth = f (0.8f, 1.0f); p.chorusMix = f (0.3f, 0.6f);
@@ -714,7 +818,7 @@ private:
         p.filterMorph = f (0.0f, 1.0f);
         p.cutoff = f (500.f, 1600.f); p.resonance = f (0.3f, 0.6f);
         p.filterEnvAmt = f (0.0f, 0.3f); p.keytrack = f (0.2f, 0.6f);
-        p.lfoDest = 0; p.lfoRate = f (4.5f, 6.5f); p.lfoDepth = f (0.1f, 0.35f);  // vibrato
+        motion (p, ModPitch, f (4.5f, 6.5f), f (0.1f, 0.35f));    // vibrato
         p.noiseLevel = f (0.03f, 0.15f);                     // breath
         p.unisonVoices = chance (0.5f) ? 3 : 1; p.unisonDetune = f (5.0f, 14.0f);
         p.reverbMix = f (0.25f, 0.5f); p.reverbSize = f (0.5f, 0.85f);

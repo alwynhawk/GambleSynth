@@ -85,6 +85,57 @@ struct Oscillator
     }
 };
 
+// ---- One modulator. Per-voice, so every note carries its own phase and its
+//      own random stream — sixteen voices moving in lockstep sounds mechanical.
+//      Always returns bipolar -1..1; the destination decides what that means. ----
+struct ModOsc
+{
+    float phase  = 0.0f;
+    float held   = 0.0f;    // sample & hold: the value being held
+    float from   = 0.0f;    // random walk: where this segment started
+    float to     = 0.0f;    // random walk: where it is heading
+    juce::Random rng;
+
+    void reset (juce::uint32 seed, float startPhase)
+    {
+        rng.setSeed ((juce::int64) seed + 1);
+        phase = startPhase - std::floor (startPhase);
+        held  = rng.nextFloat() * 2.0f - 1.0f;
+        from  = held;
+        to    = rng.nextFloat() * 2.0f - 1.0f;
+    }
+
+    // inc = cycles per sample.
+    float next (float inc, int shape)
+    {
+        phase += inc;
+        const bool wrapped = phase >= 1.0f;
+        if (wrapped)
+        {
+            phase -= std::floor (phase);
+            held = rng.nextFloat() * 2.0f - 1.0f;   // new step for S&H
+            from = to;
+            to   = rng.nextFloat() * 2.0f - 1.0f;   // new leg for the walk
+        }
+
+        switch (shape)
+        {
+            case 1:  return 1.0f - 4.0f * std::abs (std::fmod (phase + 0.25f, 1.0f) - 0.5f); // tri
+            case 2:  return phase < 0.5f ? 1.0f : -1.0f;                                     // square
+            case 3:  return 2.0f * phase - 1.0f;                                             // ramp up
+            case 4:  return 1.0f - 2.0f * phase;                                             // ramp down
+            case 5:  return held;                                                            // sample & hold
+            case 6:                                                                          // random walk
+            {
+                // Smoothstep between the two random endpoints: drifting, never stepped.
+                const float t = phase * phase * (3.0f - 2.0f * phase);
+                return from + (to - from) * t;
+            }
+            default: return std::sin (phase * juce::MathConstants<float>::twoPi);            // sine
+        }
+    }
+};
+
 // ---- Fractional read from a delay line (shared by chorus / flanger) ----
 inline float readFracDelay (const std::vector<float>& b, float delaySamples, int w)
 {

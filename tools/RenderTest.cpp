@@ -120,6 +120,18 @@ int main (int argc, char** argv)
         const int total = (int) (sr * 1.5);
         juce::AudioBuffer<float> out (2, total), work (2, block);
 
+        // Motion is now a major axis of variety, so the structural key has to
+        // include it: shape+destination per slot, plus the envelope's routing.
+        auto modKey = [] (const Patch& p)
+        {
+            juce::String k;
+            for (const auto& m : p.mod)
+                if (m.dest != ModNone && m.depth > 0.01f)
+                    k << m.shape << ":" << m.dest << ",";
+            k << "e" << p.envDest;
+            return k;
+        };
+
         struct Print { juce::String label; int seed; std::vector<float> v; };
         std::vector<Print> prints;
         juce::StringArray structures;
@@ -192,7 +204,8 @@ int main (int argc, char** argv)
                       + juce::String (pat.osc[2].wave)
                 + "/r" + juce::String (juce::roundToInt (ratioSemis * 2.0f) / 2.0f, 1)
                 + "/f" + juce::String (pat.filterModel)
-                + "/" + pat.modifierName);
+                + "/" + pat.modifierName
+                + "/m" + modKey (pat));
 
             prints.push_back ({ label, pat.seed, std::move (v) });
         }
@@ -493,7 +506,7 @@ int main (int argc, char** argv)
                 p.osc[2] = { 2, 0, 0.0f, 0.0f };
                 p.oscMode = 0; p.unisonVoices = 1; p.subLevel = 0.0f; p.noiseLevel = 0.0f;
                 p.filterModel = 0; p.filterType = 0; p.cutoff = 18000.0f; p.resonance = 0.0f;
-                p.filterEnvAmt = 0.0f; p.keytrack = 0.0f; p.lfoDepth = 0.0f;
+                p.filterEnvAmt = 0.0f; p.keytrack = 0.0f; p.mod[0].dest = ModNone;
                 p.ampA = 0.005f; p.ampD = 0.05f; p.ampS = 1.0f; p.ampR = 0.1f;
                 p.velToAmp = 0.0f; p.velToFilter = 0.0f; p.stereoWidth = 0.0f;
                 p.chorusMix = 0.0f; p.drive = 0.0f; p.delayMix = 0.0f; p.reverbMix = 0.0f;
@@ -710,7 +723,7 @@ int main (int argc, char** argv)
         held.cutoff = 8000.0f; held.resonance = 0.1f;
         held.filterEnvAmt = 0.0f; held.keytrack = 0.0f;
         held.ampA = 0.01f; held.ampD = 0.05f; held.ampS = 1.0f; held.ampR = 0.2f;
-        held.lfoDepth = 0.0f; held.velToAmp = 0.0f; held.velToFilter = 0.0f;
+        held.mod[0].dest = ModNone; held.velToAmp = 0.0f; held.velToFilter = 0.0f;
         held.chorusMix = 0.0f; held.drive = 0.0f; held.foldAmount = 0.0f;
         held.crushBits = 16.0f; held.crushRate = 1.0f;
         held.phaserMix = 0.0f; held.flangerMix = 0.0f; held.compAmount = 0.0f;
@@ -883,7 +896,7 @@ int main (int argc, char** argv)
             p.osc[2] = { 2, 0, 0.0f, 0.0f };
             p.oscMode = 0; p.unisonVoices = 1;
             p.filterModel = 0; p.filterType = 0; p.cutoff = 5000.0f; p.keytrack = 0.0f;
-            p.filterEnvAmt = 0.0f; p.lfoDepth = 0.0f;
+            p.filterEnvAmt = 0.0f; p.mod[0].dest = ModNone;
             p.ampA = 0.002f; p.ampD = 0.05f; p.ampS = 0.0f; p.ampR = 0.05f;   // short blip
             p.velToAmp = 0.0f; p.velToFilter = 0.0f; p.stereoWidth = 0.0f;
             p.chorusMix = 0.0f; p.drive = 0.0f; p.reverbMix = 0.0f;
@@ -923,7 +936,7 @@ int main (int argc, char** argv)
             host.bpm = bpm;
             Patch p = plain();
             p.ampS = 1.0f; p.ampD = 0.05f; p.ampR = 0.1f;
-            p.lfoDest = 2; p.lfoDepth = 1.0f; p.gateSyncDiv = 3;       // 1/8
+            p.mod[0] = { ModSquare, ModAmp, 8.0f, 1.0f, 0.0f, 3 };     // 1/8
             render (proc, p, true);   // the gate needs a sustained note
 
             // Window has to be well above the note's own period (~4 ms) and well
@@ -1002,7 +1015,7 @@ int main (int argc, char** argv)
             p.filterModel = 0; p.filterType = 0; p.cutoff = 6000.0f; p.resonance = 0.1f;
             p.filterEnvAmt = 0.0f; p.keytrack = 0.0f;
             p.ampA = 0.01f; p.ampD = 0.1f; p.ampS = 1.0f; p.ampR = 0.2f;
-            p.lfoDepth = 0.0f; p.velToAmp = 0.0f; p.velToFilter = 0.0f;
+            p.mod[0].dest = ModNone; p.velToAmp = 0.0f; p.velToFilter = 0.0f;
             p.stereoWidth = 0.0f; p.voiceMode = 0;
             p.chorusMix = 0.0f; p.drive = 0.0f; p.delayMix = 0.0f; p.reverbMix = 0.0f;
             p.master = 0.8f;
@@ -1226,7 +1239,7 @@ int main (int argc, char** argv)
             p.filterModel = 0; p.filterPoles = 2; p.filterType = 0;
             p.cutoff = 5000.0f; p.resonance = 0.1f; p.filterEnvAmt = 0.0f; p.keytrack = 0.0f;
             p.ampA = 0.01f; p.ampD = 0.1f; p.ampS = 1.0f; p.ampR = 0.2f;
-            p.lfoDepth = 0.0f; p.velToAmp = 0.0f; p.velToFilter = 0.0f;
+            p.mod[0].dest = ModNone; p.velToAmp = 0.0f; p.velToFilter = 0.0f;
             p.stereoWidth = 0.0f; p.voiceMode = 0;
             p.chorusMix = 0.0f; p.drive = 0.0f;
             p.delayMix = 0.0f; p.reverbMix = 0.0f; p.reverbSize = 0.4f;
@@ -1241,7 +1254,8 @@ int main (int argc, char** argv)
             { "delay",      [] (Patch& p) { p.delayMix = 0.35f; p.delayTime = 0.3f; p.delayFb = 0.4f; } },
             { "reverb",     [] (Patch& p) { p.reverbMix = 0.4f; } },
             { "drive",      [] (Patch& p) { p.drive = 0.6f; } },
-            { "lfo-filter", [] (Patch& p) { p.cutoff = 1200.f; p.lfoDest = 1; p.lfoRate = 3.f; p.lfoDepth = 0.6f; } },
+            { "lfo-filter", [] (Patch& p) { p.cutoff = 1200.f;
+                                            p.mod[0] = { ModSine, ModCutoff, 3.0f, 0.6f, 0.0f, 0 }; } },
             { "filter-env", [] (Patch& p) { p.cutoff = 800.f; p.filterEnvAmt = 0.7f; p.modD = 0.5f; p.modS = 0.3f; } },
             { "ladder",     [] (Patch& p) { p.filterModel = 1; p.filterPoles = 4; p.cutoff = 1500.f; } },
             { "comb",       [] (Patch& p) { p.filterModel = 4; p.cutoff = 400.f; } },

@@ -369,9 +369,13 @@ void GambleSynthProcessor::applyTempoSync()
     if (delayBeats > 0.0f)
         active.delayTime = juce::jlimit (0.02f, 0.95f, (float) (delayBeats * 60.0 / hostBpm));
 
-    const float gateBeats = syncDivBeats (active.gateSyncDiv);
-    if (gateBeats > 0.0f)
-        active.lfoRate = juce::jlimit (0.05f, 30.0f, (float) (hostBpm / (60.0 * gateBeats)));
+    // Any modulator that asked for the grid gets it.
+    for (auto& m : active.mod)
+    {
+        const float beats = syncDivBeats (m.syncDiv);
+        if (beats > 0.0f)
+            m.rate = juce::jlimit (0.02f, 30.0f, (float) (hostBpm / (60.0 * beats)));
+    }
 }
 
 void GambleSynthProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
