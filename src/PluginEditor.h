@@ -118,6 +118,7 @@ private:
     // Skin artwork, embedded at build time from assets/. Null when there is
     // none, in which case the plain drawn UI is used instead.
     juce::Image skin;
+    juce::Image backdrop;              // fills the window behind the cabinet
     juce::Rectangle<int> artArea;      // where the artwork is actually drawn
     juce::OwnedArray<ReelDisplay> reels;
 

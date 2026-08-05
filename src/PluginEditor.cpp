@@ -59,7 +59,8 @@ GambleSynthEditor::GambleSynthEditor (GambleSynthProcessor& p)
     addAndMakeVisible (keyboard);
 
    #if GAMBLESYNTH_HAS_ASSETS
-    skin = juce::ImageCache::getFromMemory (BinaryData::machine_png, BinaryData::machine_pngSize);
+    skin     = juce::ImageCache::getFromMemory (BinaryData::machine_png, BinaryData::machine_pngSize);
+    backdrop = juce::ImageCache::getFromMemory (BinaryData::background_png, BinaryData::background_pngSize);
    #endif
 
     if (skin.isValid())
@@ -207,6 +208,40 @@ void GambleSynthEditor::paint (juce::Graphics& g)
 
     if (skin.isValid())
     {
+        if (backdrop.isValid())
+        {
+            // Cover the window without distorting: scale to the larger of the
+            // two ratios and centre, so the edges crop rather than stretch.
+            const float sx = (float) getWidth()  / (float) backdrop.getWidth();
+            const float sy = (float) getHeight() / (float) backdrop.getHeight();
+            const float scale = juce::jmax (sx, sy);
+            const float w = backdrop.getWidth() * scale, h = backdrop.getHeight() * scale;
+
+            g.drawImage (backdrop,
+                         juce::Rectangle<float> ((getWidth() - w) * 0.5f,
+                                                 (getHeight() - h) * 0.5f, w, h),
+                         juce::RectanglePlacement::stretchToFit, false);
+
+            // Knock it back so the cabinet stays the thing you look at, and
+            // darken toward the edges so the eye lands in the middle.
+            g.setColour (juce::Colours::black.withAlpha (0.55f));
+            g.fillRect (getLocalBounds());
+
+            juce::ColourGradient vignette (juce::Colours::transparentBlack,
+                                           (float) getWidth() * 0.5f, (float) getHeight() * 0.5f,
+                                           juce::Colours::black.withAlpha (0.8f),
+                                           0.0f, 0.0f, true);
+            g.setGradientFill (vignette);
+            g.fillRect (getLocalBounds());
+        }
+
+        // A shadow lifts the cabinet off the backdrop, which a busy background
+        // otherwise flattens it into.
+        {
+            juce::DropShadow shadow (juce::Colours::black.withAlpha (0.75f), 28, {});
+            shadow.drawForRectangle (g, artArea.reduced (6));
+        }
+
         g.drawImage (skin, artArea.toFloat(),
                      juce::RectanglePlacement::stretchToFit, false);
 
