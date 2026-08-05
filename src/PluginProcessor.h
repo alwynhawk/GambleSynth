@@ -3,6 +3,7 @@
 #include "Patch.h"
 #include "Randomizer.h"
 #include "DSP.h"
+#include "Fruit.h"
 
 class GambleVoice; // defined in SynthVoice.h; held by unique_ptr for the mono path
 
@@ -52,6 +53,11 @@ public:
     // option).
     void setOversampling (bool shouldOversample);
     bool isOversampling() const { return oversample; }
+
+    // The reel lottery. Spun on a pull only — undo, redo and loading a
+    // favourite change the sound, so the front glyphs follow, but they are not
+    // pulls and must not hand out jackpots.
+    const FruitSpin& getFruitSpin() const { return fruitSpin; }
 
     // Output level for the meter: 0..1 per channel, already peak-decayed.
     float getMeterLevel (int channel) const
@@ -121,6 +127,8 @@ private:
 
     bool chaosMode = false;
     int  lockMask = 0;
+    FruitLottery fruitLottery;
+    FruitSpin    fruitSpin;
     std::atomic<float> meter[2] { { 0.0f }, { 0.0f } };
     std::atomic<bool>  clipped { false };
     Randomizer randomizer;

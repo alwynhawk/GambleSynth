@@ -150,11 +150,13 @@ Patch GambleSynthProcessor::rollAudible()
 
 void GambleSynthProcessor::pullLever()
 {
+    fruitSpin = fruitLottery.spin();
     commit (rollAudible());
 }
 
 void GambleSynthProcessor::rollSeed (unsigned seed)
 {
+    fruitSpin = fruitLottery.spin();
     const Patch p = withLocks (chaosMode ? randomizer.rollChaos (seed) : randomizer.roll (seed));
     randomizer.accept (p);
     commit (p);

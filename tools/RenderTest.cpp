@@ -1,8 +1,10 @@
 // Headless render: instantiate the synth, play a chord, dump a WAV + print
 // peak/RMS. Lets us verify sound and audition randomizer output with no DAW.
+#include <map>
 #include "../src/PluginProcessor.h"
 #include "../src/DevPanel.h"
 #include "../src/PluginEditor.h"
+#include "../src/Fruit.h"
 
 int main (int argc, char** argv)
 {
@@ -385,6 +387,57 @@ int main (int argc, char** argv)
 
         std::cout << "host lifecycle: " << (allOk ? "PASS" : "FAIL") << std::endl;
         return allOk ? 0 : 1;
+    }
+
+    // --- Fruit lottery: the odds are constructed, so they should land on the
+    //     numbers exactly rather than approximately. ---
+    bool fruitTest = false;
+    for (int a = 1; a < argc; ++a) if (juce::String (argv[a]) == "fruittest") fruitTest = true;
+    if (fruitTest)
+    {
+        const int spins = 200000;
+        FruitLottery lottery;
+        int matches[4] = {};
+        int perReel[3][(int) Fruit::NumFruits] = {};
+
+        for (int k = 0; k < spins; ++k)
+        {
+            const auto s2 = lottery.spin();
+            matches[s2.matches()]++;
+            for (int r = 0; r < 3; ++r) perReel[r][(int) s2.symbol[r]]++;
+        }
+
+        const double jack = 100.0 * matches[3] / spins;
+        const double near = 100.0 * matches[2] / spins;
+
+        std::cout << "over " << spins << " spins\n" << std::endl;
+        std::cout << "jackpot    " << juce::String (jack, 2) << "%   (target "
+                  << juce::String (100.0 * FruitLottery::JackpotChance, 2) << "%)" << std::endl;
+        std::cout << "near miss  " << juce::String (near, 2) << "%   (target "
+                  << juce::String (100.0 * FruitLottery::NearMissChance, 2) << "%)" << std::endl;
+        std::cout << "nothing    " << juce::String (100.0 * matches[1] / spins, 2) << "%" << std::endl;
+
+        // Every symbol has to turn up about equally on every reel, or one of
+        // them is barely worth drawing.
+        std::cout << "\n            TONE   SHAPE  SPACE" << std::endl;
+        bool balanced = true;
+        for (int fr = 0; fr < (int) Fruit::NumFruits; ++fr)
+        {
+            std::cout << juce::String (fruitName ((Fruit) fr)).paddedRight (' ', 11);
+            for (int r = 0; r < 3; ++r)
+            {
+                const double pct = 100.0 * perReel[r][fr] / spins;
+                if (std::abs (pct - 100.0 / (int) Fruit::NumFruits) > 1.5) balanced = false;
+                std::cout << juce::String (pct, 1).paddedLeft (' ', 6) << "%";
+            }
+            std::cout << std::endl;
+        }
+
+        const bool ok = std::abs (jack - 100.0 * FruitLottery::JackpotChance) < 0.15
+                     && std::abs (near - 100.0 * FruitLottery::NearMissChance) < 0.6
+                     && balanced;
+        std::cout << "\nfruit lottery: " << (ok ? "PASS" : "FAIL") << std::endl;
+        return ok ? 0 : 1;
     }
 
     // --- Worst-case CPU: 16 held notes, 7-voice unison each, whole FX rack on,
