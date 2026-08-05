@@ -76,7 +76,9 @@ namespace Skin
         // The WINS strip up top carries the transport and the meter.
         juce::Rectangle<float> undo  { px (160.0f, 300.0f,  70.0f, 56.0f) };
         juce::Rectangle<float> redo  { px (238.0f, 300.0f,  70.0f, 56.0f) };
-        juce::Rectangle<float> meter { px (540.0f, 306.0f, 162.0f, 44.0f) };
+        // The strip's ruled lines sit at y=305 and y=341, so the middle row is
+        // 306..341. Centred in it, and a shade narrower.
+        juce::Rectangle<float> meter { px (548.0f, 310.0f, 150.0f, 27.0f) };
 
         // The band between the reels and the window.
         juce::Rectangle<float> save  { px (152.0f, 664.0f, 170.0f, 52.0f) };
