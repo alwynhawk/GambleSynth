@@ -194,6 +194,12 @@ private:
                  [k] (Patch& p, float v) { p.mod[k].syncDiv = (int) std::round (v); });
         }
 
+        // Arp. mode: 0 off, 1 up, 2 down, 3 up-down, 4 random.
+        addI ("arp mode",    0.0f, 4.0f, 1.0f, &Patch::arpMode);
+        addI ("arp div",     1.0f, 7.0f, 1.0f, &Patch::arpDiv);
+        addM ("arp gate",    0.05f, 0.98f, 0.01f, &Patch::arpGate);
+        addI ("arp octaves", 1.0f, 3.0f, 1.0f, &Patch::arpOctaves);
+
         addI ("env dest",   0.0f, (float) (NumModDests - 1), 1.0f, &Patch::envDest);
         addM ("env amount", -1.0f, 1.0f, 0.01f, &Patch::envAmount);
 

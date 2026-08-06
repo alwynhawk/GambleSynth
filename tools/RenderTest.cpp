@@ -6,6 +6,7 @@
 #include "../src/PluginEditor.h"
 #include "../src/Fruit.h"
 #include "../src/LeverDisplay.h"
+#include "../src/Arp.h"
 
 int main (int argc, char** argv)
 {
@@ -461,6 +462,136 @@ int main (int argc, char** argv)
                      && balanced;
         std::cout << "\nfruit lottery: " << (ok ? "PASS" : "FAIL") << std::endl;
         return ok ? 0 : 1;
+    }
+
+    // --- Arpeggiator: it re-times held notes, so it must never invent one, never
+    //     leave one hanging, and must step at the rate it was asked for. ---
+    bool arpTest = false;
+    for (int a = 1; a < argc; ++a) if (juce::String (argv[a]) == "arptest") arpTest = true;
+    if (arpTest)
+    {
+        bool allOk = true;
+        const double stepSamples = 0.125 * sr;          // 1/8 at 120 BPM
+
+        // Hold a C minor triad and run four seconds through the arp.
+        auto run = [&] (int mode, float gate, int octaves, juce::Array<int>& notesOut, int& maxOverlap)
+        {
+            Arpeggiator arp;
+            arp.reset();
+            int sounding = 0;
+            maxOverlap = 0;
+
+            for (int b = 0; b < 350; ++b)
+            {
+                juce::MidiBuffer midi;
+                if (b == 0)
+                    for (int n : { 48, 51, 55 })
+                        midi.addEvent (juce::MidiMessage::noteOn (1, n, (juce::uint8) 100), 0);
+
+                arp.process (midi, block, stepSamples, mode, gate, octaves);
+
+                for (const auto meta : midi)
+                {
+                    const auto m = meta.getMessage();
+                    if (m.isNoteOn())  { notesOut.add (m.getNoteNumber()); ++sounding; }
+                    if (m.isNoteOff()) --sounding;
+                    maxOverlap = juce::jmax (maxOverlap, sounding);
+                }
+            }
+            return sounding;
+        };
+
+        // 1. Only notes that were held (plus octave copies) ever come out.
+        {
+            juce::Array<int> notes; int overlap = 0;
+            run (Arpeggiator::Up, 0.6f, 1, notes, overlap);
+
+            bool onlyHeld = true;
+            for (int n : notes) if (n != 48 && n != 51 && n != 55) onlyHeld = false;
+
+            const bool ok = onlyHeld && notes.size() > 20;
+            allOk = allOk && ok;
+            std::cout << "plays only held notes: " << (ok ? "PASS" : "FAIL")
+                      << "  (" << notes.size() << " steps)" << std::endl;
+        }
+
+        // 2. Never two arp notes at once — that would stack voices forever.
+        {
+            juce::Array<int> notes; int overlap = 0;
+            run (Arpeggiator::Up, 0.95f, 3, notes, overlap);
+            const bool ok = overlap <= 1;
+            allOk = allOk && ok;
+            std::cout << "never overlaps:        " << (ok ? "PASS" : "FAIL")
+                      << "  (max " << overlap << " sounding)" << std::endl;
+        }
+
+        // 3. Steps land at the requested rate.
+        {
+            Arpeggiator arp; arp.reset();
+            juce::Array<int> onsets;
+            int elapsed = 0;
+            for (int b = 0; b < 350; ++b)      // enough blocks to see ~30 steps
+            {
+                juce::MidiBuffer midi;
+                if (b == 0)
+                    for (int n : { 48, 51, 55 })
+                        midi.addEvent (juce::MidiMessage::noteOn (1, n, (juce::uint8) 100), 0);
+                arp.process (midi, block, stepSamples, Arpeggiator::Up, 0.6f, 1);
+                for (const auto meta : midi)
+                    if (meta.getMessage().isNoteOn())
+                        onsets.add (elapsed + meta.samplePosition);
+                elapsed += block;
+            }
+
+            double worst = 0.0;
+            for (int k = 1; k < onsets.size(); ++k)
+                worst = juce::jmax (worst, std::abs ((onsets[k] - onsets[k-1]) - stepSamples));
+
+            const bool ok = onsets.size() > 20 && worst <= 2.0;
+            allOk = allOk && ok;
+            std::cout << "step timing:           " << (ok ? "PASS" : "FAIL")
+                      << "  worst drift " << juce::String (worst, 1) << " samples"
+                      << " of " << (int) stepSamples << std::endl;
+        }
+
+        // 4. Octave span actually reaches higher notes.
+        {
+            juce::Array<int> notes; int overlap = 0;
+            run (Arpeggiator::Up, 0.6f, 3, notes, overlap);
+            const bool reachedUp = notes.contains (48 + 24);
+            allOk = allOk && reachedUp;
+            std::cout << "octave span:           " << (reachedUp ? "PASS" : "FAIL") << std::endl;
+        }
+
+        // 5. Releasing the chord stops it, leaving nothing hanging.
+        {
+            Arpeggiator arp; arp.reset();
+            int sounding = 0;
+            for (int b = 0; b < 120; ++b)
+            {
+                juce::MidiBuffer midi;
+                if (b == 0)
+                    for (int n : { 48, 51, 55 })
+                        midi.addEvent (juce::MidiMessage::noteOn (1, n, (juce::uint8) 100), 0);
+                if (b == 60)
+                    for (int n : { 48, 51, 55 })
+                        midi.addEvent (juce::MidiMessage::noteOff (1, n), 0);
+
+                arp.process (midi, block, stepSamples, Arpeggiator::Up, 0.6f, 1);
+                for (const auto meta : midi)
+                {
+                    if (meta.getMessage().isNoteOn())  ++sounding;
+                    if (meta.getMessage().isNoteOff()) --sounding;
+                }
+            }
+            const bool ok = (sounding == 0);
+            allOk = allOk && ok;
+            std::cout << "stops on release:      " << (ok ? "PASS" : "FAIL")
+                      << "  (" << sounding << " left sounding)" << std::endl;
+        }
+
+        std::cout << "arpeggiator: " << (allOk ? "PASS" : "FAIL") << std::endl;
+        return allOk ? 0 : 1;
     }
 
     // --- Worst-case CPU: 16 held notes, 7-voice unison each, whole FX rack on,

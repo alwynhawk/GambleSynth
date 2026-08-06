@@ -110,6 +110,8 @@ private:
         loosen (p);
         finaliseModulation (p, false);
 
+        rollArp (p);
+
         // Delay on the grid unless the roll wants it loose. Resolved against the
         // host tempo at play time (120 BPM in the standalone).
         if (p.delayMix > 0.001f)
@@ -199,6 +201,28 @@ private:
             const int which = chance (0.6f) ? 1 : 2;
             p.osc[which].decay = f (0.01f, 0.35f);
         }
+    }
+
+    // An arp only suits a patch that can articulate: a slow attack smears every
+    // step into the next, and a long tail turns a pattern into porridge. Gate on
+    // that rather than rolling one onto anything.
+    void rollArp (Patch& p)
+    {
+        const bool articulate = p.ampA < 0.12f
+                             && p.reverbMix < 0.45f
+                             && p.delayMix  < 0.40f
+                             && p.voiceMode == 0;       // needs held notes
+
+        if (! articulate || ! chance (0.10f))
+            return;
+
+        p.arpMode    = i (1, 4);
+        p.arpDiv     = i (1, 3);          // 1/16, 1/8 triplet, 1/8 — musical by construction
+        p.arpGate    = f (0.35f, 0.85f);
+        p.arpOctaves = chance (0.55f) ? 1 : (chance (0.6f) ? 2 : 3);
+
+        // A pattern wants its notes to end before the next one starts.
+        p.ampR = juce::jmin (p.ampR, f (0.08f, 0.35f));
     }
 
     int pickShape (bool wild)

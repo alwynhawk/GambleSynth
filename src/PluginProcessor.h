@@ -4,6 +4,7 @@
 #include "Randomizer.h"
 #include "DSP.h"
 #include "Fruit.h"
+#include "Arp.h"
 
 class GambleVoice; // defined in SynthVoice.h; held by unique_ptr for the mono path
 
@@ -154,6 +155,7 @@ private:
     juce::AudioBuffer<float> monoScratch;   // right-channel sink when a host gives 1 channel
     juce::MidiBuffer osMidi;
     Decimator2x decimator;
+    Arpeggiator arp;
 
     // Master FX
     Chorus chorus;

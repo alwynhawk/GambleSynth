@@ -122,6 +122,13 @@ struct Patch
     float flangerDepth= 0.5f;  // 0..1
     float flangerFb   = 0.4f;  // 0..1
 
+    // Arpeggiator. Rolled onto a minority of patches and only where it suits
+    // one: the pattern is re-timed from whatever is held, never invented.
+    int   arpMode    = 0;      // 0 off, 1 up, 2 down, 3 up-down, 4 random
+    int   arpDiv     = 3;      // note division; kept to 1/16, 1/8T, 1/8
+    float arpGate    = 0.6f;   // note length as a fraction of the step
+    int   arpOctaves = 1;      // 1..3
+
     // Tempo sync for the delay (0 = free-running, else a note division).
     // Modulators carry their own syncDiv; vibrato and drift stay free on purpose.
     int   delaySyncDiv = 0;
@@ -193,6 +200,8 @@ inline void copyReel (Patch& into, const Patch& from, int reel)
         case ReelMod:
             for (int k = 0; k < Patch::NumMods; ++k) into.mod[k] = from.mod[k];
             into.envDest = from.envDest;             into.envAmount = from.envAmount;
+            into.arpMode = from.arpMode;             into.arpDiv = from.arpDiv;
+            into.arpGate = from.arpGate;             into.arpOctaves = from.arpOctaves;
             into.voiceMode = from.voiceMode;         into.glideTime = from.glideTime;
             into.stereoWidth = from.stereoWidth;
             break;
@@ -234,7 +243,7 @@ inline float syncDivBeats (int div)
 // identical even if the randomizer algorithm changes later. ----
 inline void writePatch (juce::OutputStream& s, const Patch& p)
 {
-    s.writeInt (9); // format version
+    s.writeInt (10); // format version
     for (const auto& o : p.osc)
     {
         s.writeInt (o.wave); s.writeInt (o.semi);
@@ -278,6 +287,9 @@ inline void writePatch (juce::OutputStream& s, const Patch& p)
     }
     for (const auto& o : p.osc) s.writeFloat (o.decay);
     s.writeInt (p.envDest); s.writeFloat (p.envAmount);
+    // v10
+    s.writeInt (p.arpMode); s.writeInt (p.arpDiv);
+    s.writeFloat (p.arpGate); s.writeInt (p.arpOctaves);
 }
 
 inline Patch readPatch (juce::InputStream& s)
@@ -337,6 +349,11 @@ inline Patch readPatch (juce::InputStream& s)
         }
         for (auto& o : p.osc) o.decay = s.readFloat();
         p.envDest = s.readInt(); p.envAmount = s.readFloat();
+    }
+    if (version >= 10)
+    {
+        p.arpMode = s.readInt(); p.arpDiv = s.readInt();
+        p.arpGate = s.readFloat(); p.arpOctaves = s.readInt();
     }
     return p;
 }

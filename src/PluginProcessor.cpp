@@ -308,6 +308,7 @@ bool GambleSynthProcessor::swapToNewPatch()
     for (auto* v : voicePtrs) v->hardReset();
     monoVoice->hardReset();
     monoNotes.clear();
+    arp.reset();
 
     std::fill (delayL.begin(), delayL.end(), 0.0f);
     std::fill (delayR.begin(), delayR.end(), 0.0f);
@@ -419,6 +420,19 @@ void GambleSynthProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     }
 
     keyboardState.processNextMidiBuffer (midi, 0, numSamples, true);
+
+    // The arp re-times held notes into a pattern. It runs on base-rate sample
+    // positions, before the oversampled path doubles them.
+    if (active.arpMode != Arpeggiator::Off)
+    {
+        const float beats = syncDivBeats (active.arpDiv);
+        const double stepSamples = (beats > 0.0f)
+            ? beats * 60.0 / hostBpm * currentSampleRate
+            : 0.125 * currentSampleRate;
+
+        arp.process (midi, numSamples, stepSamples, active.arpMode,
+                     active.arpGate, active.arpOctaves);
+    }
 
     updateTempo();
     applyTempoSync();
