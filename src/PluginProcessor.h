@@ -81,6 +81,23 @@ public:
     // pulls and must not hand out jackpots.
     const FruitSpin& getFruitSpin() const { return fruitSpin; }
 
+    // ---- Live diagnostics, shown in dev mode. Everything here is written on
+    // the audio thread and read on the message thread, so a silent plugin can
+    // say *where* it went silent instead of being guessed at. ----
+    struct Diagnostics
+    {
+        std::atomic<int>   blocks     { 0 };   // processBlock calls
+        std::atomic<int>   notesIn    { 0 };   // note-ons arriving
+        std::atomic<int>   voicesOn   { 0 };   // voices sounding right now
+        std::atomic<float> voicePeak  { 0.0f };// level straight out of the voices
+        std::atomic<float> outPeak    { 0.0f };// level leaving processBlock
+        std::atomic<int>   sampleRate { 0 };
+        std::atomic<int>   blockSize  { 0 };
+        std::atomic<int>   channels   { 0 };
+        std::atomic<bool>  prepared   { false };
+    };
+    const Diagnostics& getDiagnostics() const { return diag; }
+
     // Output level for the meter: 0..1 per channel, already peak-decayed.
     float getMeterLevel (int channel) const
     {
@@ -171,6 +188,7 @@ private:
     int  lockMask = 0;
     FruitLottery fruitLottery;
     FruitSpin    fruitSpin;
+    Diagnostics diag;
     std::atomic<float> meter[2] { { 0.0f }, { 0.0f } };
     std::atomic<bool>  clipped { false };
     Randomizer randomizer;

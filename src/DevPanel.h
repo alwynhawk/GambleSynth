@@ -7,7 +7,8 @@
 // parameter as a live slider so the engine can be tuned by ear, which is much
 // faster than editing the archetype ranges and re-rolling. Edits bypass the
 // roll cut (see applyLiveEdit) so dragging doesn't mute the output.
-class DevPanel : public juce::Component
+class DevPanel : public juce::Component,
+                 private juce::Timer
 {
 public:
     explicit DevPanel (GambleSynthProcessor& p) : proc (p)
@@ -56,6 +57,7 @@ public:
         addAndMakeVisible (resetButton);
 
         syncFromPatch();
+        startTimerHz (8);      // the diagnostics readout
     }
 
     int getNumParams() const { return (int) params.size(); }
@@ -78,6 +80,49 @@ public:
         g.setFont (Theme::mono (11.0f, true));
         g.drawText ("DEV / 777", header.reduced (2, 0), juce::Justification::centredLeft, false);
         g.fillRect (0, headerH - 1, getWidth(), 1);
+
+        // Live signal path, so a silent plugin says where it went silent.
+        const auto& d = proc.getDiagnostics();
+        auto strip = getLocalBounds().removeFromBottom (diagH);
+
+        g.setColour (juce::Colour (0xff101010));
+        g.fillRect (strip);
+        g.setColour (Theme::ink());
+        g.fillRect (strip.getX(), strip.getY(), strip.getWidth(), 1);
+
+        const int   blocks = d.blocks.load();
+        const float vPeak  = d.voicePeak.load();
+        const float oPeak  = d.outPeak.load();
+
+        juce::StringArray lines;
+        lines.add ("prepared " + juce::String (d.prepared.load() ? "yes" : "NO")
+                   + "   " + juce::String (d.sampleRate.load()) + " Hz"
+                   + " / " + juce::String (d.blockSize.load())
+                   + " / " + juce::String (d.channels.load()) + "ch");
+        lines.add ("blocks " + juce::String (blocks)
+                   + (blocks == lastBlocks ? " (STALLED)" : " (running)"));
+        lines.add ("notes in " + juce::String (d.notesIn.load())
+                   + "   voices " + juce::String (d.voicesOn.load()));
+        lines.add ("voice peak " + juce::String (vPeak, 4)
+                   + "   out peak " + juce::String (oPeak, 4));
+
+        // Say what the numbers mean, so the reading is actionable.
+        juce::String verdict;
+        if (! d.prepared.load())          verdict = "never prepared";
+        else if (blocks == lastBlocks)    verdict = "processBlock not running";
+        else if (d.notesIn.load() == 0)   verdict = "no MIDI arriving";
+        else if (d.voicesOn.load() == 0)  verdict = "notes arrive but no voice starts";
+        else if (vPeak < 0.0001f)         verdict = "voices active but silent";
+        else if (oPeak < 0.0001f)         verdict = "voices sound, FX chain kills it";
+        else                              verdict = "signal present";
+        lines.add ("-> " + verdict);
+
+        g.setFont (Theme::mono (10.0f));
+        auto row = strip.reduced (4, 3);
+        for (const auto& line : lines)
+            g.drawText (line, row.removeFromTop (11), juce::Justification::centredLeft, false);
+
+        g.setColour (Theme::ink());
         g.drawRect (getLocalBounds(), 1);
     }
 
@@ -87,6 +132,7 @@ public:
         auto header = r.removeFromTop (headerH - 1);
         resetButton.setBounds (header.removeFromRight (64).reduced (2));
 
+        r.removeFromBottom (diagH);
         viewport.setBounds (r);
         content.setSize (juce::jmax (260, r.getWidth() - 10), (int) rows.size() * rowHeight);
 
@@ -280,6 +326,16 @@ private:
 
     static constexpr int rowHeight = 20;
     static constexpr int headerH   = 20;
+    static constexpr int diagH     = 62;
+
+    void timerCallback() override
+    {
+        // Repaint the strip; lastBlocks makes a stalled processBlock obvious.
+        repaint (getLocalBounds().removeFromBottom (diagH));
+        lastBlocks = proc.getDiagnostics().blocks.load();
+    }
+
+    int lastBlocks = -1;
 
     GambleSynthProcessor& proc;
     juce::Viewport  viewport;

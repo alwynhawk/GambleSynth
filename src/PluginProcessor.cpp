@@ -137,6 +137,10 @@ void GambleSynthProcessor::prepareToPlay (double sampleRate, int samplesPerBlock
 
     cutState = Cut::None;
     cutGain  = 1.0f;
+
+    diag.sampleRate.store ((int) sampleRate);
+    diag.blockSize.store (maxBlockSize);
+    diag.prepared.store (true);
 }
 
 bool GambleSynthProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -584,6 +588,12 @@ void GambleSynthProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
 
     keyboardState.processNextMidiBuffer (midi, 0, numSamples, true);
 
+    diag.blocks.fetch_add (1, std::memory_order_relaxed);
+    diag.channels.store (buffer.getNumChannels(), std::memory_order_relaxed);
+    for (const auto meta : midi)
+        if (meta.getMessage().isNoteOn())
+            diag.notesIn.fetch_add (1, std::memory_order_relaxed);
+
     // The arp re-times held notes into a pattern. It runs on base-rate sample
     // positions, before the oversampled path doubles them.
     if (active.arpMode != Arpeggiator::Off)
@@ -675,6 +685,19 @@ void GambleSynthProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
         applyDriveFold (L, R, numSamples);
     }
 
+    {
+        int sounding = 0;
+        for (auto* v : voicePtrs)
+            if (v->isVoiceActive()) ++sounding;
+        if (active.voiceMode != 0 && monoVoice->isVoiceActive()) ++sounding;
+        diag.voicesOn.store (sounding, std::memory_order_relaxed);
+
+        float vp = 0.0f;
+        for (int n = 0; n < numSamples; ++n)
+            vp = juce::jmax (vp, std::abs (L[n]));
+        diag.voicePeak.store (vp, std::memory_order_relaxed);
+    }
+
     // --- Character: crush stays at the base rate on purpose — sample-rate
     // reduction *is* aliasing, that grit is the effect. Drive and fold already
     // ran upstream at 2x (see applyDriveFold). ---
@@ -732,6 +755,13 @@ void GambleSynthProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
         applyCut (L, R, numSamples);
 
     updateMeter (L, R, numSamples);
+
+    {
+        float op = 0.0f;
+        for (int n = 0; n < numSamples; ++n)
+            op = juce::jmax (op, std::abs (L[n]));
+        diag.outPeak.store (op, std::memory_order_relaxed);
+    }
 
     if (monoOut)                          // fold the scratch right channel back in
         for (int n = 0; n < numSamples; ++n)
