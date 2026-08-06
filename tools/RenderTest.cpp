@@ -7,6 +7,7 @@
 #include "../src/Fruit.h"
 #include "../src/LeverDisplay.h"
 #include "../src/Arp.h"
+#include "../src/Wavetables.h"
 
 int main (int argc, char** argv)
 {
@@ -591,6 +592,211 @@ int main (int argc, char** argv)
         }
 
         std::cout << "arpeggiator: " << (allOk ? "PASS" : "FAIL") << std::endl;
+        return allOk ? 0 : 1;
+    }
+
+    // --- Wavetables. The whole gamble is the mipmapping: a naive wavetable
+    //     aliases badly on high notes and would sound worse than the plain
+    //     waves it replaces. Measured against the polyBLEP saw, which is
+    //     properly band-limited, as the standard to beat. ---
+    bool wtTest = false;
+    for (int a = 1; a < argc; ++a) if (juce::String (argv[a]) == "wttest") wtTest = true;
+    if (wtTest)
+    {
+        constexpr int fftOrder = 14, fftSize = 1 << fftOrder;
+        juce::dsp::FFT fft (fftOrder);
+
+        auto inharmonic = [&] (const juce::AudioBuffer<float>& buf, int from, double f0)
+        {
+            std::vector<float> fd ((size_t) fftSize * 2, 0.0f);
+            for (int n = 0; n < fftSize; ++n)
+            {
+                const float win = 0.5f - 0.5f * std::cos (juce::MathConstants<float>::twoPi
+                                                          * (float) n / (float) (fftSize - 1));
+                fd[(size_t) n] = buf.getSample (0, from + n) * win;
+            }
+            fft.performFrequencyOnlyForwardTransform (fd.data());
+
+            const double binHz = sr / fftSize;
+            std::vector<bool> harmonic ((size_t) fftSize / 2, false);
+            for (int k = 1; k * f0 < sr * 0.5; ++k)
+            {
+                const int c = (int) std::round (k * f0 / binHz);
+                for (int b = c - 3; b <= c + 3; ++b)
+                    if (b >= 0 && b < fftSize / 2) harmonic[(size_t) b] = true;
+            }
+
+            double total = 0.0, harm = 0.0;
+            for (int b = (int) (150.0 / binHz); b < fftSize / 2; ++b)
+            {
+                const double e = (double) fd[(size_t) b] * fd[(size_t) b];
+                total += e;
+                if (harmonic[(size_t) b]) harm += e;
+            }
+            return total > 0.0 ? (total - harm) / total : 0.0;
+        };
+
+        auto plain = []
+        {
+            Patch p;
+            p.osc[0] = { 2, 0, 0.0f, 0.8f, 0.0f };
+            p.osc[1] = { 2, 0, 0.0f, 0.0f, 0.0f };
+            p.osc[2] = { 2, 0, 0.0f, 0.0f, 0.0f };
+            p.oscMode = 0; p.unisonVoices = 1; p.subLevel = 0.0f; p.noiseLevel = 0.0f;
+            p.filterModel = 0; p.filterType = 0; p.cutoff = 18000.0f;
+            p.resonance = 0.0f; p.filterEnvAmt = 0.0f; p.keytrack = 0.0f;
+            p.ampA = 0.005f; p.ampD = 0.05f; p.ampS = 1.0f; p.ampR = 0.1f;
+            p.mod[0].dest = ModNone; p.envDest = ModNone;
+            p.velToAmp = 0.0f; p.velToFilter = 0.0f; p.stereoWidth = 0.0f;
+            p.chorusMix = 0.0f; p.drive = 0.0f; p.delayMix = 0.0f; p.reverbMix = 0.0f;
+            p.foldAmount = 0.0f; p.crushBits = 16.0f; p.crushRate = 1.0f;
+            p.phaserMix = 0.0f; p.flangerMix = 0.0f; p.compAmount = 0.0f;
+            p.arpMode = 0; p.master = 0.8f;
+            return p;
+        };
+
+        auto render = [&] (const Patch& p, int note, juce::AudioBuffer<float>& out)
+        {
+            proc.setPatch (p);
+            juce::AudioBuffer<float> work (2, block);
+            for (int b = 0; b < 4; ++b)
+            { work.clear(); juce::MidiBuffer e; proc.processBlock (work, e); }
+
+            const int total = out.getNumSamples();
+            out.clear();
+            for (int spos = 0; spos < total; spos += block)
+            {
+                const int n = juce::jmin (block, total - spos);
+                work.clear();
+                juce::MidiBuffer midi;
+                if (spos == 0) midi.addEvent (juce::MidiMessage::noteOn (1, note, 0.9f), 0);
+                juce::AudioBuffer<float> sub (work.getArrayOfWritePointers(), 2, 0, n);
+                proc.processBlock (sub, midi);
+                for (int ch = 0; ch < 2; ++ch) out.copyFrom (ch, spos, work, ch, 0, n);
+            }
+        };
+
+        proc.setPlayConfigDetails (0, 2, sr, block);
+        proc.prepareToPlay (sr, block);
+
+        const int total = (int) (sr * 1.0);
+        juce::AudioBuffer<float> out (2, total);
+        bool allOk = true;
+
+        // The saw is the reference: properly band-limited, so whatever it
+        // measures at is the noise floor of the measurement itself.
+        double sawAlias = 0.0;
+        {
+            Patch p = plain();
+            render (p, 96, out);              // C7, where aliasing shows worst
+            sawAlias = inharmonic (out, (int) (sr * 0.3), 
+                                   juce::MidiMessage::getMidiNoteInHertz (96));
+            std::cout << "polyBLEP saw @C7 inharmonic: "
+                      << juce::String (sawAlias * 100.0, 2) << "%  (the reference)" << std::endl;
+        }
+
+        for (int t = 0; t < Wavetables::NumTables; ++t)
+        {
+            Patch p = plain();
+            p.osc[0].wave = 5; p.wtTable = t; p.wtPos = 0.5f;
+
+            render (p, 96, out);
+            const double alias = inharmonic (out, (int) (sr * 0.3),
+                                             juce::MidiMessage::getMidiNoteInHertz (96));
+            const float peak = out.getMagnitude (0, total);
+
+            bool finite = true;
+            for (int n = 0; n < total && finite; ++n)
+                if (! std::isfinite (out.getSample (0, n))) finite = false;
+
+            // Must be in the same league as the band-limited saw, not merely
+            // "not terrible" — a naive table would be several times worse.
+            const bool ok = finite && peak > 0.02f && peak <= 1.01f
+                         && alias < juce::jmax (0.02, sawAlias * 3.0);
+            allOk = allOk && ok;
+
+            std::cout << juce::String (Wavetables::name (t)).paddedRight (' ', 9)
+                      << (ok ? "PASS" : "FAIL")
+                      << "  alias " << juce::String (alias * 100.0, 2) << "%"
+                      << "  peak " << juce::String (peak, 3)
+                      << (finite ? "" : "  NON-FINITE") << std::endl;
+        }
+
+        // Position must actually change the sound, or none of this earned its
+        // place. Compare the spectrum at both ends of the morph.
+        {
+            juce::AudioBuffer<float> a (2, total), b (2, total);
+            Patch p = plain();
+            p.osc[0].wave = 5; p.wtTable = 0;
+
+            p.wtPos = 0.0f; render (p, 60, a);
+            p.wtPos = 1.0f; render (p, 60, b);
+
+            double diff = 0.0;
+            for (int n = 0; n < total; ++n)
+                diff += std::abs (a.getSample (0, n) - b.getSample (0, n));
+            diff /= total;
+
+            const bool ok = diff > 0.02;
+            allOk = allOk && ok;
+            std::cout << "position changes tone: " << (ok ? "PASS" : "FAIL")
+                      << "  mean diff " << juce::String (diff, 4) << std::endl;
+        }
+
+        // A stepped modulator on position must not click: the voice slews it.
+        {
+            Patch p = plain();
+            p.osc[0].wave = 5; p.wtTable = 0; p.wtPos = 0.5f;
+            p.ampS = 1.0f;
+            p.mod[0] = { ModSampleHold, ModWtPos, 12.0f, 1.0f, 0.0f, 0 };
+            render (p, 60, out);
+
+            // Same patch with the modulator off: whatever this counts is the
+            // waveform's own steepness, not the modulation.
+            Patch still = p;
+            still.mod[0].dest = ModNone;
+            juce::AudioBuffer<float> ref (2, total);
+            render (still, 60, ref);
+
+            auto countClicks = [&] (const juce::AudioBuffer<float>& buf)
+            {
+                const float* dd = buf.getReadPointer (0);
+                std::vector<float> ddv ((size_t) total, 0.0f);
+                for (int n = 1; n < total; ++n) ddv[(size_t) n] = std::abs (dd[n] - dd[n-1]);
+                int c = 0;
+                for (int n = (int) (sr * 0.2); n < total - 4; ++n)
+                {
+                    float around = 0.0f;
+                    for (int k = 1; k <= 3; ++k)
+                        around = juce::jmax (around, ddv[(size_t)(n-k)], ddv[(size_t)(n+k)]);
+                    if (ddv[(size_t) n] > 0.05f && ddv[(size_t) n] > around * 4.0f) ++c;
+                }
+                return c;
+            };
+            const int baseline = countClicks (ref);
+
+            const float* d = out.getReadPointer (0);
+            std::vector<float> dv ((size_t) total, 0.0f);
+            for (int n = 1; n < total; ++n) dv[(size_t) n] = std::abs (d[n] - d[n-1]);
+
+            int clicks = 0;
+            for (int n = (int) (sr * 0.2); n < total - 4; ++n)
+            {
+                float around = 0.0f;
+                for (int k = 1; k <= 3; ++k)
+                    around = juce::jmax (around, dv[(size_t)(n-k)], dv[(size_t)(n+k)]);
+                if (dv[(size_t) n] > 0.05f && dv[(size_t) n] > around * 4.0f) ++clicks;
+            }
+
+            // The modulation must not add discontinuities of its own.
+            const bool ok = (clicks <= baseline);
+            allOk = allOk && ok;
+            std::cout << "stepped mod, no clicks: " << (ok ? "PASS" : "FAIL")
+                      << "  (" << clicks << " vs " << baseline
+                      << " with the modulator off)" << std::endl;
+        }
+
+        std::cout << "wavetables: " << (allOk ? "PASS" : "FAIL") << std::endl;
         return allOk ? 0 : 1;
     }
 

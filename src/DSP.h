@@ -1,5 +1,6 @@
 #pragma once
 #include <cmath>
+#include "Wavetables.h"
 
 // ---- polyBLEP: cheap anti-aliasing correction for saw / square edges ----
 inline float polyBLEP (float t, float dt)
@@ -26,7 +27,8 @@ struct Oscillator
     void syncReset() { phase[0] = 0.0f; }   // hard-sync: restart primary phase
 
     // pw = pulse width (0..1), only affects the square wave.
-    static float waveAt (float p, float dt, int wave, float pw, juce::Random& rng)
+    static float waveAt (float p, float dt, int wave, float pw, juce::Random& rng,
+                         const Wavetable* wt = nullptr, float wtPos = 0.0f)
     {
         switch (wave)
         {
@@ -39,19 +41,23 @@ struct Oscillator
                 float t2 = p - pw; if (t2 < 0.0f) t2 += 1.0f;
                 return v - polyBLEP (t2, dt);
             }
+            case 5:  // wavetable — mip-mapped by dt so high notes stay band-limited
+                return wt != nullptr ? wt->sample (p, wtPos, dt)
+                                     : std::sin (p * juce::MathConstants<float>::twoPi);
             default: return rng.nextFloat() * 2.0f - 1.0f;                               // noise
         }
     }
 
     // Single-voice (uses phase[0]). phaseMod shifts read position (FM).
     float next (float freq, double sampleRate, int wave, juce::Random& rng,
-                float phaseMod = 0.0f, float pw = 0.5f)
+                float phaseMod = 0.0f, float pw = 0.5f,
+                const Wavetable* wt = nullptr, float wtPos = 0.0f)
     {
         wrapped = false;
         const float dt = (float) (freq / sampleRate);
         float p = phase[0] + phaseMod;
         p -= std::floor (p);
-        const float value = waveAt (p, dt, wave, pw, rng);
+        const float value = waveAt (p, dt, wave, pw, rng, wt, wtPos);
         phase[0] += dt;
         if (phase[0] >= 1.0f) { phase[0] -= std::floor (phase[0]); wrapped = true; }
         return value;
@@ -61,7 +67,8 @@ struct Oscillator
     // Accumulates equal-power into L/R (does not overwrite).
     void nextUnison (float freq, double sampleRate, int wave, juce::Random& rng,
                      int voices, float detuneCents, float basePan, float spread,
-                     float pw, float& L, float& R)
+                     float pw, float& L, float& R,
+                     const Wavetable* wt = nullptr, float wtPos = 0.0f)
     {
         voices = juce::jlimit (1, MaxUni, voices);
         float outL = 0.0f, outR = 0.0f;
@@ -70,7 +77,7 @@ struct Oscillator
             const float d = (voices > 1) ? ((float) v / (voices - 1) * 2.0f - 1.0f) : 0.0f;
             const float ratio = std::exp2 (d * detuneCents / 1200.0f);
             const float dt = (float) (freq * ratio / sampleRate);
-            const float val = waveAt (phase[v], dt, wave, pw, rng);
+            const float val = waveAt (phase[v], dt, wave, pw, rng, wt, wtPos);
             phase[v] += dt;
             if (phase[v] >= 1.0f) phase[v] -= std::floor (phase[v]);
 

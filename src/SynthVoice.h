@@ -86,6 +86,7 @@ public:
                                    patch.mod[m].phase);
 
                 for (auto& e : oscEnv) e = 1.0f;
+                wtPosSm = patch.wtPos;
             }
 
             ampEnv.setParameters ({ patch.ampA, patch.ampD, patch.ampS, patch.ampR });
@@ -154,6 +155,18 @@ public:
 
         const float keyOct = patch.keytrack * (noteNumber - 60) / 12.0f;
 
+        // Wavetable context: null unless an oscillator actually uses one.
+        const auto& wts = Wavetables::get();
+        const Wavetable* wtFor[3];
+        for (int i = 0; i < 3; ++i)
+            wtFor[i] = (patch.osc[i].wave == 5) ? &wts.table (patch.wtTable) : nullptr;
+        // A short slew on position. Measurement says the wavetable does not
+        // actually click when a stepped modulator jumps it — a table frame is a
+        // continuous waveform, so moving between frames moves the *shape*, not
+        // the sample value. Kept anyway because it costs nothing and stops the
+        // very fastest modulators from buzzing at their own rate.
+        const float wtSlew = 1.0f - (float) std::exp (-1.0 / (0.003 * sr));
+
         // Portamento coefficient (per-block); 1.0 = instant (no glide).
         const float glideCoef = (patch.glideTime > 0.0005f)
             ? (float) (1.0 - std::exp (-1.0 / (patch.glideTime * sr)))
@@ -185,7 +198,7 @@ public:
             // ---- Modulation: three slots, summed per destination ----
             float mPitch = 0.0f, mFilt = 0.0f, mAmp = 1.0f, mPw = 0.0f, mFm = 0.0f;
             float mPan = 0.0f, mDetune = 0.0f, mRes = 0.0f;
-            float mOsc2 = 0.0f, mSub = 0.0f, mNoise = 0.0f;
+            float mOsc2 = 0.0f, mSub = 0.0f, mNoise = 0.0f, mWt = 0.0f;
 
             for (int k = 0; k < Patch::NumMods; ++k)
             {
@@ -211,6 +224,7 @@ public:
                     case ModOsc2Level:  mOsc2   += v * d;          break;
                     case ModSubLevel:   mSub    += v * d * 0.5f;   break;
                     case ModNoise:      mNoise  += v * d * 0.3f;   break;
+                    case ModWtPos:      mWt     += v * d * 0.5f;   break;
                     default: break;
                 }
             }
@@ -232,6 +246,7 @@ public:
                     case ModOsc2Level:  mOsc2   += e;          break;
                     case ModSubLevel:   mSub    += e * 0.5f;   break;
                     case ModNoise:      mNoise  += e * 0.3f;   break;
+                    case ModWtPos:      mWt     += e * 0.6f;   break;
                     default: break;
                 }
             }
@@ -244,6 +259,12 @@ public:
 
             // Glide current pitch toward the target note.
             baseFreq += (targetFreq - baseFreq) * glideCoef;
+
+            // Wavetable position, slewed over ~8 ms. A stepped modulator (S&H,
+            // square) jumps the target; the slew turns that jump into a fast
+            // morph instead of a waveform discontinuity, i.e. a click.
+            const float wtTarget = juce::jlimit (0.0f, 1.0f, patch.wtPos + mWt);
+            wtPosSm += (wtTarget - wtPosSm) * wtSlew;
 
             // Transient layers decay on their own clock.
             for (int k = 0; k < 3; ++k)
@@ -265,35 +286,36 @@ public:
             {
                 case 1: // ring modulation: osc0 * osc1, plus osc2 underneath
                 {
-                    const float a = osc[0].next (f0, sr, patch.osc[0].wave, rng, 0.0f, pw);
-                    const float b = osc[1].next (f1, sr, patch.osc[1].wave, rng, 0.0f, pw);
+                    const float a = osc[0].next (f0, sr, patch.osc[0].wave, rng, 0.0f, pw, wtFor[0], wtPosSm);
+                    const float b = osc[1].next (f1, sr, patch.osc[1].wave, rng, 0.0f, pw, wtFor[1], wtPosSm);
                     const float ring = a * b;
                     const float v01 = a * lv0 * (1.0f - fmA) + ring * 1.6f * fmA;
-                    const float v2  = osc[2].next (f2, sr, patch.osc[2].wave, rng, 0.0f, pw) * lv2;
+                    const float v2  = osc[2].next (f2, sr, patch.osc[2].wave, rng, 0.0f, pw, wtFor[2], wtPosSm) * lv2;
                     sL = v01 * gL[0] + v2 * gL[2];
                     sR = v01 * gR[0] + v2 * gR[2];
                     break;
                 }
                 case 2: // hard sync: osc1 phase reset by osc0 → bright metallic sweep
                 {
-                    const float master = osc[0].next (f0, sr, patch.osc[0].wave, rng, 0.0f, pw);
+                    const float master = osc[0].next (f0, sr, patch.osc[0].wave, rng, 0.0f, pw, wtFor[0], wtPosSm);
                     if (osc[0].wrapped) osc[1].syncReset();
                     const float slave = osc[1].next (f1 * (1.0f + fmA * 3.0f),
-                                                     sr, patch.osc[1].wave, rng, 0.0f, pw);
+                                                     sr, patch.osc[1].wave, rng, 0.0f, pw,
+                                                     wtFor[1], wtPosSm);
                     const float v1 = slave * lv1;
                     const float v0 = master * lv0 * 0.3f;
-                    const float v2 = osc[2].next (f2, sr, patch.osc[2].wave, rng, 0.0f, pw) * lv2;
+                    const float v2 = osc[2].next (f2, sr, patch.osc[2].wave, rng, 0.0f, pw, wtFor[2], wtPosSm) * lv2;
                     sL = v1 * gL[1] + v0 * gL[0] + v2 * gL[2];
                     sR = v1 * gR[1] + v0 * gR[0] + v2 * gR[2];
                     break;
                 }
                 case 3: // FM: osc1 modulates osc0's phase → bells, clangs, growls
                 {
-                    const float mod = osc[1].next (f1, sr, patch.osc[1].wave, rng);
+                    const float mod = osc[1].next (f1, sr, patch.osc[1].wave, rng, 0.0f, 0.5f, wtFor[1], wtPosSm);
                     const float car = osc[0].next (f0, sr, patch.osc[0].wave, rng,
-                                                   mod * fmA, pw);
+                                                   mod * fmA, pw, wtFor[0], wtPosSm);
                     const float v0 = car * lv0;
-                    const float v2 = osc[2].next (f2, sr, patch.osc[2].wave, rng, 0.0f, pw) * lv2 * 0.5f;
+                    const float v2 = osc[2].next (f2, sr, patch.osc[2].wave, rng, 0.0f, pw, wtFor[2], wtPosSm) * lv2 * 0.5f;
                     sL = v0 * gL[0] + v2 * gL[2];
                     sR = v0 * gR[0] + v2 * gR[2];
                     break;
@@ -301,9 +323,9 @@ public:
                 default: // normal: three detuned oscillators, each with unison + stereo spread
                 {
                     float t0L = 0, t0R = 0, t1L = 0, t1R = 0, t2L = 0, t2R = 0;
-                    osc[0].nextUnison (f0, sr, patch.osc[0].wave, rng, uni, uniDetMod, basePan[0], 0.6f, pw, t0L, t0R);
-                    osc[1].nextUnison (f1, sr, patch.osc[1].wave, rng, uni, uniDetMod, basePan[1], 0.6f, pw, t1L, t1R);
-                    osc[2].nextUnison (f2, sr, patch.osc[2].wave, rng, uni, uniDetMod, basePan[2], 0.6f, pw, t2L, t2R);
+                    osc[0].nextUnison (f0, sr, patch.osc[0].wave, rng, uni, uniDetMod, basePan[0], 0.6f, pw, t0L, t0R, wtFor[0], wtPosSm);
+                    osc[1].nextUnison (f1, sr, patch.osc[1].wave, rng, uni, uniDetMod, basePan[1], 0.6f, pw, t1L, t1R, wtFor[1], wtPosSm);
+                    osc[2].nextUnison (f2, sr, patch.osc[2].wave, rng, uni, uniDetMod, basePan[2], 0.6f, pw, t2L, t2R, wtFor[2], wtPosSm);
                     sL = t0L * lv0 + t1L * lv1 + t2L * lv2;
                     sR = t0R * lv0 + t1R * lv1 + t2R * lv2;
                     break;
@@ -425,6 +447,8 @@ private:
     float targetFreq = 440.0f;
     float level      = 1.0f;
     float lfoPhase   = 0.0f;
+
+    float wtPosSm = 0.3f;    // slewed wavetable position
 
     // Fast fade-out state (voice stealing)
     bool  fading     = false;

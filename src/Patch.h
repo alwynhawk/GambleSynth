@@ -20,6 +20,7 @@ enum ModDest
     ModOsc2Level,    // layer fades in and out
     ModSubLevel,
     ModNoise,
+    ModWtPos,        // wavetable position — the whole point of having one
     NumModDests
 };
 
@@ -122,6 +123,11 @@ struct Patch
     float flangerDepth= 0.5f;  // 0..1
     float flangerFb   = 0.4f;  // 0..1
 
+    // Wavetable, shared by any oscillator whose wave is 5. The position is
+    // where in the table's morph you are; ModWtPos moves it.
+    int   wtTable = 0;      // which of the generated tables
+    float wtPos   = 0.3f;   // 0..1 morph position
+
     // Arpeggiator. Rolled onto a minority of patches and only where it suits
     // one: the pattern is re-timed from whatever is held, never invented.
     int   arpMode    = 0;      // 0 off, 1 up, 2 down, 3 up-down, 4 random
@@ -182,6 +188,7 @@ inline void copyReel (Patch& into, const Patch& from, int reel)
             into.subWave = from.subWave;             into.subLevel = from.subLevel;
             into.noiseLevel = from.noiseLevel;
             into.pulseWidth = from.pulseWidth;       into.pwmDepth = from.pwmDepth;
+            into.wtTable = from.wtTable;             into.wtPos = from.wtPos;
             break;
 
         case ReelFilter:
@@ -243,7 +250,7 @@ inline float syncDivBeats (int div)
 // identical even if the randomizer algorithm changes later. ----
 inline void writePatch (juce::OutputStream& s, const Patch& p)
 {
-    s.writeInt (10); // format version
+    s.writeInt (11); // format version
     for (const auto& o : p.osc)
     {
         s.writeInt (o.wave); s.writeInt (o.semi);
@@ -290,6 +297,8 @@ inline void writePatch (juce::OutputStream& s, const Patch& p)
     // v10
     s.writeInt (p.arpMode); s.writeInt (p.arpDiv);
     s.writeFloat (p.arpGate); s.writeInt (p.arpOctaves);
+    // v11
+    s.writeInt (p.wtTable); s.writeFloat (p.wtPos);
 }
 
 inline Patch readPatch (juce::InputStream& s)
@@ -354,6 +363,10 @@ inline Patch readPatch (juce::InputStream& s)
     {
         p.arpMode = s.readInt(); p.arpDiv = s.readInt();
         p.arpGate = s.readFloat(); p.arpOctaves = s.readInt();
+    }
+    if (version >= 11)
+    {
+        p.wtTable = s.readInt(); p.wtPos = s.readFloat();
     }
     return p;
 }

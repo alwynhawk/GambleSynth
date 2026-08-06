@@ -131,7 +131,7 @@ private:
         for (int k = 0; k < 3; ++k)
         {
             const juce::String tag = "osc" + juce::String (k + 1) + " ";
-            add (tag + "wave",  0.0f, 4.0f, 1.0f,
+            add (tag + "wave",  0.0f, 5.0f, 1.0f,   // 4 noise, 5 wavetable
                  [k] (const Patch& p) { return (float) p.osc[k].wave; },
                  [k] (Patch& p, float v) { p.osc[k].wave = (int) v; });
             add (tag + "semi", -24.0f, 24.0f, 1.0f,
@@ -193,6 +193,11 @@ private:
                  [k] (const Patch& p) { return (float) p.mod[k].syncDiv; },
                  [k] (Patch& p, float v) { p.mod[k].syncDiv = (int) std::round (v); });
         }
+
+        // Wavetable. Set an oscillator's wave to 5 to use it.
+        // table: 0 morph, 1 sweep, 2 vowel, 3 hollow, 4 glass, 5 grit.
+        addI ("wt table", 0.0f, (float) (Wavetables::NumTables - 1), 1.0f, &Patch::wtTable);
+        addM ("wt pos",   0.0f, 1.0f, 0.01f, &Patch::wtPos);
 
         // Arp. mode: 0 off, 1 up, 2 down, 3 up-down, 4 random.
         addI ("arp mode",    0.0f, 4.0f, 1.0f, &Patch::arpMode);

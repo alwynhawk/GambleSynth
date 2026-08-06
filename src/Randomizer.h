@@ -1,6 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include "Patch.h"
+#include "Wavetables.h"
 #include <random>
 
 // The heart of GambleSynth: never rolls raw parameters. It picks a musical
@@ -110,6 +111,7 @@ private:
         loosen (p);
         finaliseModulation (p, false);
 
+        rollWavetable (p);
         rollArp (p);
 
         // Delay on the grid unless the roll wants it loose. Resolved against the
@@ -200,6 +202,68 @@ private:
         {
             const int which = chance (0.6f) ? 1 : 2;
             p.osc[which].decay = f (0.01f, 0.35f);
+        }
+    }
+
+    // A static wavetable is just an unusual waveform — the payoff is entirely in
+    // moving the position, so any roll that takes one also gets something moving
+    // it. Applied after modulation is settled so it can claim a free slot, or
+    // repoint an existing one if all three are busy.
+    void rollWavetable (Patch& p)
+    {
+        if (! chanceW (0.22f))
+            return;
+
+        p.wtTable = i (0, Wavetables::NumTables - 1);
+        p.wtPos   = f (0.0f, 1.0f);
+
+        // Osc 1 always, so the table is audible rather than buried; sometimes
+        // osc 2 as well, which makes the morph much wider.
+        p.osc[0].wave = 5;
+        if (chance (0.35f)) p.osc[1].wave = 5;
+
+        // Find a slot to move it with: a free one first, else the least
+        // interesting of what is there.
+        int slot = -1;
+        for (int k = 0; k < Patch::NumMods; ++k)
+            if (p.mod[k].dest == ModNone || p.mod[k].depth < 0.02f) { slot = k; break; }
+
+        if (slot < 0)
+        {
+            // Never steal slot 0 — that is the archetype's own character.
+            slot = i (1, Patch::NumMods - 1);
+        }
+
+        auto& m = p.mod[slot];
+        m.dest  = ModWtPos;
+        m.phase = f (0.0f, 1.0f);
+        m.depth = f (0.25f, 0.9f);
+
+        // Slow sweeps evolve, fast ones flutter, stepped ones stutter through
+        // shapes. All three are worth having.
+        if (chance (0.55f))
+        {
+            m.shape = chance (0.6f) ? ModSine : ModTri;
+            m.rate  = f (0.04f, 0.5f);
+        }
+        else if (chance (0.5f))
+        {
+            m.shape = chance (0.5f) ? ModSampleHold : ModSquare;
+            m.rate  = f (2.0f, 10.0f);
+            if (chance (0.6f)) m.syncDiv = i (1, 5);
+        }
+        else
+        {
+            m.shape = ModRandomWalk;
+            m.rate  = f (0.1f, 1.2f);
+        }
+
+        // Half the time the envelope shapes it too, so the attack has a
+        // different timbre from the sustain.
+        if (chance (0.5f))
+        {
+            p.envDest   = ModWtPos;
+            p.envAmount = f (-0.9f, 0.9f);
         }
     }
 
@@ -424,7 +488,7 @@ private:
 
         for (int k = 0; k < 3; ++k)
         {
-            p.osc[k].wave  = i (0, 4);
+            p.osc[k].wave  = i (0, 5);
             p.osc[k].semi  = i (-24, 24);
             p.osc[k].fine  = f (-50.0f, 50.0f);
             p.osc[k].level = f (0.3f, 1.0f);
@@ -464,6 +528,9 @@ private:
         p.flangerRate= f (0.03f, 3.0f); p.flangerDepth= f (0.2f, 1.0f); p.flangerFb= f (0.0f, 0.85f);
         p.compAmount = chance (0.5f) ? f (0.0f, 0.9f) : 0.0f;
         p.delaySyncDiv = chance (0.5f) ? i (1, 7) : 0;
+        p.wtTable = i (0, Wavetables::NumTables - 1);
+        p.wtPos   = f (0.0f, 1.0f);
+        if (chance (0.35f)) p.osc[i (0, 2)].wave = 5;
         p.master      = f (0.6f, 0.85f); // master limiter still protects output
 
         finaliseModulation (p, true);
