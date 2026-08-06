@@ -51,7 +51,36 @@ jobs:
           cp build/GambleSynth_artefacts/Release/Standalone/GambleSynth.exe dist/GambleSynth/
           cp README.md dist/GambleSynth/
 
+      # The version comes from CMakeLists so there is one place to bump it.
+      - name: Read the version
+        id: version
+        shell: bash
+        run: |
+          v=$(grep -oE 'project\(GambleSynth VERSION [0-9.]+' CMakeLists.txt | grep -oE '[0-9.]+$')
+          echo "value=$v" >> "$GITHUB_OUTPUT"
+          echo "version $v"
+
+      - name: Build the installer
+        shell: pwsh
+        run: |
+          # Inno Setup ships with the runner image; install it if that changes.
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup --no-progress -y
+            $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          }
+          & $iscc /DAppVersion=${{ steps.version.outputs.value }} `
+                  /O"$PWD\dist" installer\GambleSynth.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+
+      # The installer is what people download; the loose files are kept so a
+      # tester can drop a .vst3 in by hand without running an installer.
       - uses: actions/upload-artifact@v4
         with:
-          name: GambleSynth-windows
-          path: dist/
+          name: GambleSynth-windows-installer
+          path: dist/*.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GambleSynth-windows-portable
+          path: dist/GambleSynth/
