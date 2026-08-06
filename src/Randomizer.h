@@ -112,6 +112,9 @@ private:
         finaliseModulation (p, false);
 
         rollWavetable (p);
+        rollString (p);
+        rollChord (p);
+        rollNoiseColour (p);
         rollArp (p);
 
         // Delay on the grid unless the roll wants it loose. Resolved against the
@@ -203,6 +206,61 @@ private:
             const int which = chance (0.6f) ? 1 : 2;
             p.osc[which].decay = f (0.01f, 0.35f);
         }
+    }
+
+    // A plucked string is its own instrument rather than a layer, so when one
+    // turns up it takes the lead and the oscillators drop back to being its
+    // body. Gated to archetypes that are already struck or plucked — a string
+    // under a sustained pad is just a click at the start.
+    void rollString (Patch& p)
+    {
+        const bool struck = p.archetypeName == "Pluck" || p.archetypeName == "Perc"
+                         || p.archetypeName == "Bell"  || p.archetypeName == "Keys"
+                         || p.archetypeName == "Stab";
+
+        if (! struck || ! chanceW (0.28f))
+            return;
+
+        p.pluckLevel      = f (0.35f, 0.8f);
+        p.pluckDamping    = f (0.15f, 0.85f);    // nylon .. steel
+        p.pluckDecay      = f (0.35f, 0.98f);
+        p.pluckBrightness = f (0.15f, 0.9f);
+
+        // The string carries the note, so pull the oscillators back and let the
+        // amp envelope stay out of its way.
+        for (auto& o : p.osc) o.level *= f (0.2f, 0.5f);
+        p.ampS = juce::jmin (p.ampS, 0.25f);
+        p.ampR = juce::jmax (p.ampR, 0.3f);
+
+        // A wide-open filter lets the string's own decay be the tone.
+        p.cutoff = juce::jmax (p.cutoff, f (2500.0f, 7000.0f));
+    }
+
+    // One key press giving a chord. Kept away from the archetypes where it would
+    // be muddy: a chord in the bass is a mess, and a chord under an arp is two
+    // patterns fighting.
+    void rollChord (Patch& p)
+    {
+        const bool suits = p.archetypeName != "Bass" && p.archetypeName != "Drone"
+                        && p.voiceMode == 0 && p.pluckLevel < 0.001f;
+
+        if (! suits || ! chanceW (0.12f))
+            return;
+
+        p.chordType    = i (1, 5);
+        p.unisonVoices = juce::jmax (3, p.unisonVoices);
+        p.unisonDetune = f (2.0f, 12.0f);        // chords want much less detune
+    }
+
+    // Colour costs nothing and pink/brown are far more useful than white for
+    // breath and rumble, so most noise gets one.
+    void rollNoiseColour (Patch& p)
+    {
+        if (p.noiseLevel < 0.001f)
+            return;
+
+        p.noiseColour = chance (0.3f) ? 0
+                      : (chance (0.55f) ? 1 : (chance (0.6f) ? 2 : 3));
     }
 
     // A static wavetable is just an unusual waveform — the payoff is entirely in
@@ -531,6 +589,15 @@ private:
         p.wtTable = i (0, Wavetables::NumTables - 1);
         p.wtPos   = f (0.0f, 1.0f);
         if (chance (0.35f)) p.osc[i (0, 2)].wave = 5;
+        p.noiseColour = i (0, 3);
+        if (chance (0.3f))
+        {
+            p.pluckLevel      = f (0.2f, 0.9f);
+            p.pluckDamping    = f (0.0f, 1.0f);
+            p.pluckDecay      = f (0.2f, 1.0f);
+            p.pluckBrightness = f (0.0f, 1.0f);
+        }
+        if (chance (0.2f)) p.chordType = i (1, 5);
         p.master      = f (0.6f, 0.85f); // master limiter still protects output
 
         finaliseModulation (p, true);

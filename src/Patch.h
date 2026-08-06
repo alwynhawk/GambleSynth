@@ -91,7 +91,19 @@ struct Patch
     // Sub oscillator & noise layer
     int   subWave    = 0;      // 0 sine, 3 square
     float subLevel   = 0.0f;   // one octave below, adds weight
-    float noiseLevel = 0.0f;   // white noise texture (pre-filter)
+    float noiseLevel = 0.0f;   // noise texture (pre-filter)
+    int   noiseColour = 0;     // 0 white, 1 pink, 2 brown, 3 crackle
+
+    // Plucked string (Karplus-Strong). A different kind of sound from the
+    // oscillators: excitation decaying in a tuned loop, not a filtered wave.
+    float pluckLevel      = 0.0f;   // 0 = off
+    float pluckDamping    = 0.5f;   // high end die-off; nylon .. steel
+    float pluckDecay      = 0.6f;   // how long it rings
+    float pluckBrightness = 0.5f;   // how sharp the pick is
+
+    // Chord unison: unison voices tuned to intervals instead of detuned, so one
+    // key gives a chord. 0 = off (plain detuned unison).
+    int   chordType = 0;       // 0 off, 1 fifth, 2 octaves, 3 major, 4 minor, 5 sus4
 
     // PWM (square wave only)
     float pulseWidth = 0.5f;   // 0.05..0.95
@@ -186,7 +198,10 @@ inline void copyReel (Patch& into, const Patch& from, int reel)
             into.oscMode = from.oscMode;             into.fmAmount = from.fmAmount;
             into.unisonVoices = from.unisonVoices;   into.unisonDetune = from.unisonDetune;
             into.subWave = from.subWave;             into.subLevel = from.subLevel;
-            into.noiseLevel = from.noiseLevel;
+            into.noiseLevel = from.noiseLevel;       into.noiseColour = from.noiseColour;
+            into.pluckLevel = from.pluckLevel;       into.pluckDamping = from.pluckDamping;
+            into.pluckDecay = from.pluckDecay;       into.pluckBrightness = from.pluckBrightness;
+            into.chordType = from.chordType;
             into.pulseWidth = from.pulseWidth;       into.pwmDepth = from.pwmDepth;
             into.wtTable = from.wtTable;             into.wtPos = from.wtPos;
             break;
@@ -250,7 +265,7 @@ inline float syncDivBeats (int div)
 // identical even if the randomizer algorithm changes later. ----
 inline void writePatch (juce::OutputStream& s, const Patch& p)
 {
-    s.writeInt (11); // format version
+    s.writeInt (12); // format version
     for (const auto& o : p.osc)
     {
         s.writeInt (o.wave); s.writeInt (o.semi);
@@ -299,6 +314,11 @@ inline void writePatch (juce::OutputStream& s, const Patch& p)
     s.writeFloat (p.arpGate); s.writeInt (p.arpOctaves);
     // v11
     s.writeInt (p.wtTable); s.writeFloat (p.wtPos);
+    // v12
+    s.writeInt (p.noiseColour);
+    s.writeFloat (p.pluckLevel); s.writeFloat (p.pluckDamping);
+    s.writeFloat (p.pluckDecay); s.writeFloat (p.pluckBrightness);
+    s.writeInt (p.chordType);
 }
 
 inline Patch readPatch (juce::InputStream& s)
@@ -367,6 +387,13 @@ inline Patch readPatch (juce::InputStream& s)
     if (version >= 11)
     {
         p.wtTable = s.readInt(); p.wtPos = s.readFloat();
+    }
+    if (version >= 12)
+    {
+        p.noiseColour = s.readInt();
+        p.pluckLevel = s.readFloat(); p.pluckDamping = s.readFloat();
+        p.pluckDecay = s.readFloat(); p.pluckBrightness = s.readFloat();
+        p.chordType = s.readInt();
     }
     return p;
 }

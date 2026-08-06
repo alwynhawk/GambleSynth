@@ -194,6 +194,16 @@ private:
                  [k] (Patch& p, float v) { p.mod[k].syncDiv = (int) std::round (v); });
         }
 
+        // Plucked string (Karplus-Strong) and chords.
+        addM ("pluck level",  0.0f, 1.0f, 0.01f, &Patch::pluckLevel);
+        addM ("pluck damp",   0.0f, 1.0f, 0.01f, &Patch::pluckDamping);
+        addM ("pluck decay",  0.0f, 1.0f, 0.01f, &Patch::pluckDecay);
+        addM ("pluck bright", 0.0f, 1.0f, 0.01f, &Patch::pluckBrightness);
+        // 0 off, 1 fifth, 2 octaves, 3 major, 4 minor, 5 sus4
+        addI ("chord",        0.0f, 5.0f, 1.0f,  &Patch::chordType);
+        // 0 white, 1 pink, 2 brown, 3 crackle
+        addI ("noise colour", 0.0f, 3.0f, 1.0f,  &Patch::noiseColour);
+
         // Wavetable. Set an oscillator's wave to 5 to use it.
         // table: 0 morph, 1 sweep, 2 vowel, 3 hollow, 4 glass, 5 grit.
         addI ("wt table", 0.0f, (float) (Wavetables::NumTables - 1), 1.0f, &Patch::wtTable);

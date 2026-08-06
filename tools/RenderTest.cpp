@@ -800,6 +800,194 @@ int main (int argc, char** argv)
         return allOk ? 0 : 1;
     }
 
+    // --- The three additions, each checked for the way it would actually go
+    //     wrong: a string that never decays, a chord playing the wrong notes,
+    //     a noise colour that is silent or unstable. ---
+    bool addTest = false;
+    for (int a = 1; a < argc; ++a) if (juce::String (argv[a]) == "addtest") addTest = true;
+    if (addTest)
+    {
+        proc.setPlayConfigDetails (0, 2, sr, block);
+        proc.prepareToPlay (sr, block);
+
+        auto plain = []
+        {
+            Patch p;
+            p.osc[0] = { 2, 0, 0.0f, 0.8f, 0.0f };
+            p.osc[1] = { 2, 0, 0.0f, 0.0f, 0.0f };
+            p.osc[2] = { 2, 0, 0.0f, 0.0f, 0.0f };
+            p.oscMode = 0; p.unisonVoices = 1; p.subLevel = 0.0f; p.noiseLevel = 0.0f;
+            p.filterModel = 0; p.filterType = 0; p.cutoff = 18000.0f;
+            p.resonance = 0.0f; p.filterEnvAmt = 0.0f; p.keytrack = 0.0f;
+            p.ampA = 0.002f; p.ampD = 0.05f; p.ampS = 1.0f; p.ampR = 0.1f;
+            p.mod[0].dest = ModNone; p.envDest = ModNone;
+            p.velToAmp = 0.0f; p.velToFilter = 0.0f; p.stereoWidth = 0.0f;
+            p.chorusMix = 0.0f; p.drive = 0.0f; p.delayMix = 0.0f; p.reverbMix = 0.0f;
+            p.foldAmount = 0.0f; p.crushBits = 16.0f; p.crushRate = 1.0f;
+            p.phaserMix = 0.0f; p.flangerMix = 0.0f; p.compAmount = 0.0f;
+            p.arpMode = 0; p.master = 0.8f;
+            return p;
+        };
+
+        auto render = [&] (const Patch& p, int note, juce::AudioBuffer<float>& out, bool hold)
+        {
+            proc.setPatch (p);
+            juce::AudioBuffer<float> work (2, block);
+            for (int b = 0; b < 4; ++b)
+            { work.clear(); juce::MidiBuffer e; proc.processBlock (work, e); }
+
+            const int total = out.getNumSamples();
+            out.clear();
+            for (int spos = 0; spos < total; spos += block)
+            {
+                const int n = juce::jmin (block, total - spos);
+                work.clear();
+                juce::MidiBuffer midi;
+                if (spos == 0) midi.addEvent (juce::MidiMessage::noteOn (1, note, 0.9f), 0);
+                if (! hold && spos <= total / 8 && spos + n > total / 8)
+                    midi.addEvent (juce::MidiMessage::noteOff (1, note), 0);
+                juce::AudioBuffer<float> sub (work.getArrayOfWritePointers(), 2, 0, n);
+                proc.processBlock (sub, midi);
+                for (int ch = 0; ch < 2; ++ch) out.copyFrom (ch, spos, work, ch, 0, n);
+            }
+        };
+
+        const int total = (int) (sr * 2.0);
+        juce::AudioBuffer<float> out (2, total);
+        bool allOk = true;
+
+        // 1. The string sounds, and decays rather than ringing forever.
+        {
+            Patch p = plain();
+            for (auto& o : p.osc) o.level = 0.0f;      // string alone
+            p.pluckLevel = 0.7f; p.pluckDamping = 0.5f;
+            p.pluckDecay = 0.6f; p.pluckBrightness = 0.6f;
+            p.ampS = 1.0f; p.ampR = 1.5f;
+            render (p, 48, out, true);
+
+            const float early = out.getRMSLevel (0, (int) (sr * 0.05), (int) (sr * 0.2));
+            const float late  = out.getRMSLevel (0, (int) (sr * 1.6), (int) (sr * 0.3));
+            bool finite = true;
+            for (int n = 0; n < total && finite; ++n)
+                if (! std::isfinite (out.getSample (0, n))) finite = false;
+
+            const bool ok = finite && early > 0.01f && late < early * 0.8f;
+            allOk = allOk && ok;
+            std::cout << "string sounds & decays: " << (ok ? "PASS" : "FAIL")
+                      << "  early " << juce::String (early, 4)
+                      << " -> late " << juce::String (late, 4) << std::endl;
+        }
+
+        // 2. Damping is the character control: heavy damping must die faster.
+        {
+            auto ring = [&] (float damping)
+            {
+                Patch p = plain();
+                for (auto& o : p.osc) o.level = 0.0f;
+                p.pluckLevel = 0.7f; p.pluckDamping = damping;
+                p.pluckDecay = 0.9f; p.pluckBrightness = 0.8f;
+                p.ampS = 1.0f; p.ampR = 1.5f;
+                render (p, 48, out, true);
+                return out.getRMSLevel (0, (int) (sr * 1.0), (int) (sr * 0.5));
+            };
+            const float bright = ring (0.15f), dull = ring (0.9f);
+            const bool ok = bright > dull;
+            allOk = allOk && ok;
+            std::cout << "damping shortens ring:  " << (ok ? "PASS" : "FAIL")
+                      << "  light " << juce::String (bright, 4)
+                      << " vs heavy " << juce::String (dull, 4) << std::endl;
+        }
+
+        // 3. A chord plays the intervals it claims, and keeps the root.
+        {
+            constexpr int fftOrder = 14, fftSize = 1 << fftOrder;
+            juce::dsp::FFT fft (fftOrder);
+
+            Patch p = plain();
+            p.osc[0].wave = 0;                       // sine: clean partials to find
+            p.chordType = 4;                         // minor: 0, 3, 7, 12
+            p.unisonVoices = 4; p.unisonDetune = 0.0f;
+            // A high root: at C3 the minor and major thirds are only ~3 bins
+            // apart, so any search window wide enough to find one finds both.
+            render (p, 72, out, true);
+
+            std::vector<float> fd ((size_t) fftSize * 2, 0.0f);
+            for (int n = 0; n < fftSize; ++n)
+            {
+                const float win = 0.5f - 0.5f * std::cos (juce::MathConstants<float>::twoPi
+                                                          * (float) n / (float) (fftSize - 1));
+                fd[(size_t) n] = out.getSample (0, (int) (sr * 0.3) + n) * win;
+            }
+            fft.performFrequencyOnlyForwardTransform (fd.data());
+
+            const double binHz = sr / fftSize;
+            const double root = juce::MidiMessage::getMidiNoteInHertz (72);
+            auto energyAt = [&] (double hz)
+            {
+                const int c = (int) std::round (hz / binHz);
+                float e = 0.0f;
+                for (int b = c - 1; b <= c + 1; ++b)
+                    if (b >= 0 && b < fftSize / 2) e = juce::jmax (e, fd[(size_t) b]);
+                return e;
+            };
+
+            const float eRoot  = energyAt (root);
+            const float eMinor = energyAt (root * std::pow (2.0, 3.0 / 12.0));
+            const float eFifth = energyAt (root * std::pow (2.0, 7.0 / 12.0));
+            const float eMajor = energyAt (root * std::pow (2.0, 4.0 / 12.0));
+
+            // The minor third and fifth must be present; the major third must not.
+            const bool ok = eRoot > 0.0f && eMinor > eRoot * 0.2f
+                         && eFifth > eRoot * 0.2f && eMajor < eMinor * 0.3f;
+            allOk = allOk && ok;
+            std::cout << "chord plays its notes:  " << (ok ? "PASS" : "FAIL")
+                      << "  root " << juce::String (eRoot, 1)
+                      << "  m3 " << juce::String (eMinor, 1)
+                      << "  5th " << juce::String (eFifth, 1)
+                      << "  M3 " << juce::String (eMajor, 1) << " (should be low)" << std::endl;
+        }
+
+        // 4. Every noise colour is audible, finite, and darker than the last.
+        {
+            static const char* names[] = { "white", "pink", "brown", "crackle" };
+            float lastTilt = 1.0e9f;
+            for (int c = 0; c < 4; ++c)
+            {
+                Patch p = plain();
+                for (auto& o : p.osc) o.level = 0.0f;
+                p.noiseLevel = 0.8f; p.noiseColour = c;
+                p.ampS = 1.0f;
+                render (p, 60, out, true);
+
+                const float rms = out.getRMSLevel (0, (int) (sr * 0.2), (int) (sr * 1.0));
+                bool finite = true;
+                for (int n = 0; n < total && finite; ++n)
+                    if (! std::isfinite (out.getSample (0, n))) finite = false;
+
+                // Rough spectral tilt: mean |difference| over mean |value|.
+                double diff = 0.0, mag = 0.0;
+                for (int n = (int) (sr * 0.2) + 1; n < (int) (sr * 1.2); ++n)
+                {
+                    diff += std::abs (out.getSample (0, n) - out.getSample (0, n - 1));
+                    mag  += std::abs (out.getSample (0, n));
+                }
+                const float tilt = (float) (diff / juce::jmax (1.0e-9, mag));
+
+                const bool ok = finite && rms > 0.005f && (c == 3 || tilt < lastTilt);
+                allOk = allOk && ok;
+                if (c != 3) lastTilt = tilt;
+
+                std::cout << juce::String (names[c]).paddedRight (' ', 9)
+                          << (ok ? "PASS" : "FAIL")
+                          << "  rms " << juce::String (rms, 4)
+                          << "  tilt " << juce::String (tilt, 3) << std::endl;
+            }
+        }
+
+        std::cout << "additions: " << (allOk ? "PASS" : "FAIL") << std::endl;
+        return allOk ? 0 : 1;
+    }
+
     // --- Worst-case CPU: 16 held notes, 7-voice unison each, whole FX rack on,
     //     measured with and without oversampling. ---
     bool perfTest = false;

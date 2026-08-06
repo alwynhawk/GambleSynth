@@ -65,17 +65,49 @@ struct Oscillator
 
     // Unison: `voices` detuned copies, panned around basePan by `spread`.
     // Accumulates equal-power into L/R (does not overwrite).
+    // Chord intervals in semitones. Voice 0 is always the root, so a chord never
+    // moves the note you actually played.
+    static const int* chordIntervals (int type, int& count)
+    {
+        static const int fifth[]  = { 0, 7, 12 };
+        static const int octave[] = { 0, 12, 24 };
+        static const int major[]  = { 0, 4, 7, 12 };
+        static const int minor[]  = { 0, 3, 7, 12 };
+        static const int sus4[]   = { 0, 5, 7, 12 };
+
+        switch (type)
+        {
+            case 1: count = 3; return fifth;
+            case 2: count = 3; return octave;
+            case 3: count = 4; return major;
+            case 4: count = 4; return minor;
+            case 5: count = 4; return sus4;
+            default: count = 0; return nullptr;
+        }
+    }
+
     void nextUnison (float freq, double sampleRate, int wave, juce::Random& rng,
                      int voices, float detuneCents, float basePan, float spread,
                      float pw, float& L, float& R,
-                     const Wavetable* wt = nullptr, float wtPos = 0.0f)
+                     const Wavetable* wt = nullptr, float wtPos = 0.0f,
+                     int chordType = 0)
     {
+        // A chord replaces the detune spread: the voices become intervals rather
+        // than copies, so one key press plays a shape.
+        int chordCount = 0;
+        const int* chord = chordIntervals (chordType, chordCount);
+        if (chord != nullptr)
+            voices = juce::jmin (MaxUni, chordCount);
+
         voices = juce::jlimit (1, MaxUni, voices);
         float outL = 0.0f, outR = 0.0f;
         for (int v = 0; v < voices; ++v)
         {
             const float d = (voices > 1) ? ((float) v / (voices - 1) * 2.0f - 1.0f) : 0.0f;
-            const float ratio = std::exp2 (d * detuneCents / 1200.0f);
+            const float ratio = (chord != nullptr)
+                ? std::exp2 ((float) chord[v] / 12.0f
+                             + d * detuneCents / 4800.0f)   // a touch of detune on top
+                : std::exp2 (d * detuneCents / 1200.0f);
             const float dt = (float) (freq * ratio / sampleRate);
             const float val = waveAt (phase[v], dt, wave, pw, rng, wt, wtPos);
             phase[v] += dt;
@@ -89,6 +121,120 @@ struct Oscillator
         const float norm = 1.0f / std::sqrt ((float) voices);
         L += outL * norm;
         R += outR * norm;
+    }
+};
+
+// ---- Noise, in four colours. White is flat; pink falls 3 dB/octave and is the
+//      one that sounds like breath or wind; brown falls 6 and rumbles; crackle
+//      is sparse impulses, i.e. vinyl. ----
+struct NoiseSource
+{
+    float pink[7] = { 0.0f };
+    float brown   = 0.0f;
+    float crackle = 0.0f;
+
+    void reset() { for (auto& v : pink) v = 0.0f; brown = 0.0f; crackle = 0.0f; }
+
+    float next (int colour, juce::Random& rng)
+    {
+        const float w = rng.nextFloat() * 2.0f - 1.0f;
+
+        switch (colour)
+        {
+            case 1:   // pink — Paul Kellet's economy filter bank
+                pink[0] = 0.99886f * pink[0] + w * 0.0555179f;
+                pink[1] = 0.99332f * pink[1] + w * 0.0750759f;
+                pink[2] = 0.96900f * pink[2] + w * 0.1538520f;
+                pink[3] = 0.86650f * pink[3] + w * 0.3104856f;
+                pink[4] = 0.55000f * pink[4] + w * 0.5329522f;
+                pink[5] = -0.7616f * pink[5] - w * 0.0168980f;
+                {
+                    const float out = pink[0] + pink[1] + pink[2] + pink[3]
+                                    + pink[4] + pink[5] + pink[6] + w * 0.5362f;
+                    pink[6] = w * 0.115926f;
+                    return out * 0.11f;
+                }
+
+            case 2:   // brown — integrated white, leaked so it cannot wander off
+                brown = juce::jlimit (-1.0f, 1.0f, brown * 0.997f + w * 0.035f);
+                return brown * 3.2f;
+
+            case 3:   // crackle — sparse impulses that ring down briefly
+                crackle *= 0.72f;
+                if (rng.nextFloat() < 0.0016f)
+                    crackle = (rng.nextFloat() * 2.0f - 1.0f);
+                return crackle;
+
+            default:  return w;   // white
+        }
+    }
+};
+
+// ---- Karplus-Strong: a noise burst circulating in a tuned delay, losing its
+//      high end each lap. That is a plucked string — and it is a different
+//      *kind* of sound from anything subtractive, because the tone comes from
+//      the excitation decaying rather than from a filter sweeping. ----
+struct PluckedString
+{
+    static constexpr int MaxDelay = 4096;
+    float buf[MaxDelay] = { 0.0f };
+    int   w = 0;
+    float delay = 100.0f;
+    float lp = 0.0f;          // one-pole damping inside the loop
+    float excite = 0.0f;      // samples of burst left to inject
+    bool  active = false;
+
+    void reset()
+    {
+        for (auto& v : buf) v = 0.0f;
+        w = 0; lp = 0.0f; excite = 0.0f; active = false;
+    }
+
+    // Called on note-on: fill the loop with a burst as long as one period.
+    void pluck (float freq, double sampleRate, float brightness, juce::Random& rng)
+    {
+        delay = juce::jlimit (2.0f, (float) (MaxDelay - 2),
+                              (float) sampleRate / juce::jmax (20.0f, freq));
+
+        // The read tap sits `delay` samples *behind* the write head, so the
+        // burst has to be written there — writing ahead of it means the loop
+        // reads silence for a full period and the string never starts.
+        const int n = (int) delay;
+        for (int i = 0; i < n; ++i)
+        {
+            // A darker pluck starts with a smoother burst, like a soft pick.
+            const float white = rng.nextFloat() * 2.0f - 1.0f;
+            lp += (white - lp) * juce::jlimit (0.05f, 1.0f, brightness);
+
+            int idx = w - n + i;
+            while (idx < 0) idx += MaxDelay;
+            buf[idx % MaxDelay] = lp;
+        }
+        lp = 0.0f;
+        active = true;
+    }
+
+    // damping 0..1: how fast the high end dies, i.e. string material.
+    // decay 0..1: how long the fundamental rings.
+    float next (float damping, float decay)
+    {
+        if (! active) return 0.0f;
+
+        float rp = (float) w - delay;
+        while (rp < 0.0f) rp += (float) MaxDelay;
+        const int i0 = (int) rp;
+        const int i1 = (i0 + 1) % MaxDelay;
+        const float fr = rp - (float) i0;
+        const float v = buf[i0] + (buf[i1] - buf[i0]) * fr;
+
+        // Damping is the whole character: heavy = nylon, light = steel.
+        lp += (v - lp) * juce::jlimit (0.02f, 0.95f, 1.0f - damping);
+
+        const float fb = juce::jlimit (0.80f, 0.9995f, 0.95f + decay * 0.049f);
+        buf[w] = lp * fb;
+        if (++w >= MaxDelay) w = 0;
+
+        return v;
     }
 };
 

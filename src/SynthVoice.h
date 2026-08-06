@@ -87,6 +87,12 @@ public:
 
                 for (auto& e : oscEnv) e = 1.0f;
                 wtPosSm = patch.wtPos;
+                noiseSrc.reset();
+
+                if (patch.pluckLevel > 0.0001f)
+                    string.pluck (targetFreq, getSampleRate(), patch.pluckBrightness, rng);
+                else
+                    string.reset();
             }
 
             ampEnv.setParameters ({ patch.ampA, patch.ampD, patch.ampS, patch.ampR });
@@ -123,6 +129,8 @@ public:
         modEnv.reset();
         filterL.reset();
         filterR.reset();
+        string.reset();
+        noiseSrc.reset();
         fading = false; hasPending = false; fadeGain = 1.0f;
         clearCurrentNote();
     }
@@ -323,9 +331,9 @@ public:
                 default: // normal: three detuned oscillators, each with unison + stereo spread
                 {
                     float t0L = 0, t0R = 0, t1L = 0, t1R = 0, t2L = 0, t2R = 0;
-                    osc[0].nextUnison (f0, sr, patch.osc[0].wave, rng, uni, uniDetMod, basePan[0], 0.6f, pw, t0L, t0R, wtFor[0], wtPosSm);
-                    osc[1].nextUnison (f1, sr, patch.osc[1].wave, rng, uni, uniDetMod, basePan[1], 0.6f, pw, t1L, t1R, wtFor[1], wtPosSm);
-                    osc[2].nextUnison (f2, sr, patch.osc[2].wave, rng, uni, uniDetMod, basePan[2], 0.6f, pw, t2L, t2R, wtFor[2], wtPosSm);
+                    osc[0].nextUnison (f0, sr, patch.osc[0].wave, rng, uni, uniDetMod, basePan[0], 0.6f, pw, t0L, t0R, wtFor[0], wtPosSm, patch.chordType);
+                    osc[1].nextUnison (f1, sr, patch.osc[1].wave, rng, uni, uniDetMod, basePan[1], 0.6f, pw, t1L, t1R, wtFor[1], wtPosSm, patch.chordType);
+                    osc[2].nextUnison (f2, sr, patch.osc[2].wave, rng, uni, uniDetMod, basePan[2], 0.6f, pw, t2L, t2R, wtFor[2], wtPosSm, patch.chordType);
                     sL = t0L * lv0 + t1L * lv1 + t2L * lv2;
                     sR = t0R * lv0 + t1R * lv1 + t2R * lv2;
                     break;
@@ -344,8 +352,15 @@ public:
             }
             if (noiseLvl > 0.0001f)
             {
-                const float nz = (rng.nextFloat() * 2.0f - 1.0f) * noiseLvl;
+                const float nz = noiseSrc.next (patch.noiseColour, rng) * noiseLvl;
                 sL += nz; sR += nz;
+            }
+            if (patch.pluckLevel > 0.0001f)
+            {
+                // Centred and pre-filter, like the sub and noise layers.
+                const float pl = string.next (patch.pluckDamping, patch.pluckDecay)
+                                 * patch.pluckLevel;
+                sL += pl; sR += pl;
             }
 
             sL *= 0.28f; sR *= 0.28f; // headroom (lowered: unison+sub+noise add level)
@@ -436,6 +451,8 @@ private:
     juce::ADSR ampEnv, modEnv;
     Oscillator osc[3];
     Oscillator subOsc;
+    NoiseSource noiseSrc;
+    PluckedString string;
     MultiFilter filterL, filterR;
     juce::Random rng;
 
