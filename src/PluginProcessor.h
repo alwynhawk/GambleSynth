@@ -5,6 +5,7 @@
 #include "DSP.h"
 #include "Fruit.h"
 #include "Arp.h"
+#include "Library.h"
 
 class GambleVoice; // defined in SynthVoice.h; held by unique_ptr for the mono path
 
@@ -74,10 +75,13 @@ public:
     bool canUndo() const { return histPos > 0; }
     bool canRedo() const { return histPos >= 0 && histPos < (int) history.size() - 1; }
 
-    // Favourites
-    void saveFavourite();
-    void loadNextFavourite();
-    int  getNumFavourites() const { return (int) favourites.size(); }
+    // The saved-sound library, on disk rather than in plugin state so it
+    // outlives the project and the session that made it.
+    void saveFavourite();                        // adds the current sound
+    void loadNextFavourite();                    // step through, for the plain UI
+    void loadFavourite (int index);
+    int  getNumFavourites() const { return library.size(); }
+    Library& getLibrary() { return library; }
 
     const Patch& getPatch() const { return patch; }
     void setPatch (const Patch& p) { commit (p); }   // load an explicit sound (tests, tweaks)
@@ -144,7 +148,7 @@ private:
 
     std::vector<Patch> history;
     int histPos = -1;
-    std::vector<Patch> favourites;
+    Library library;
     int favIndex = -1;
 
     // Oversampling: voices render at 2x, the nonlinear stages run there too, and

@@ -24,7 +24,7 @@ GambleSynthEditor::GambleSynthEditor (GambleSynthProcessor& p)
     undoButton.onClick = [this] { proc.undo(); };
     redoButton.onClick = [this] { proc.redo(); };
     saveButton.onClick = [this] { proc.saveFavourite(); };
-    loadButton.onClick = [this] { proc.loadNextFavourite(); };
+    loadButton.onClick = [this] { toggleLibrary(); };
     goButton.onClick   = [this] { applyTypedSeed(); };
     goButton.setVisible (false);      // folded into the seed box (press return)
 
@@ -154,6 +154,20 @@ void GambleSynthEditor::applyTypedSeed()
     proc.rollSeed ((unsigned) t.getIntValue());
 }
 
+void GambleSynthEditor::toggleLibrary()
+{
+    if (libraryWindow != nullptr)
+    {
+        libraryWindow.reset();
+        return;
+    }
+
+    libraryWindow = std::make_unique<LibraryWindow> (proc, [this] { libraryWindow.reset(); });
+    addAndMakeVisible (*libraryWindow);
+    libraryWindow->toFront (true);
+    resized();
+}
+
 void GambleSynthEditor::setDevMode (bool shouldBeOn)
 {
     if (devMode == shouldBeOn)
@@ -237,8 +251,11 @@ void GambleSynthEditor::refresh()
 
     undoButton.setEnabled (proc.canUndo());
     redoButton.setEnabled (proc.canRedo());
-    loadButton.setButtonText ("LOAD " + juce::String (proc.getNumFavourites()));
-    loadButton.setEnabled (proc.getNumFavourites() > 0);
+    // Always just LOAD: the count belonged on a button that cycled blindly, and
+    // the panel shows what is in there far better than a number does.
+    loadButton.setButtonText ("LOAD");
+    if (libraryWindow != nullptr)
+        libraryWindow->refresh();
     chaosButton.setToggleState (proc.isChaos(), juce::dontSendNotification);
 }
 
@@ -322,6 +339,10 @@ void GambleSynthEditor::resized()
         artArea = Skin::fitArtwork (bounds);
         if (overlay != nullptr) overlay->setBounds (artArea);
         if (lever   != nullptr) lever->setBounds (artArea);
+
+        if (libraryWindow != nullptr)
+            libraryWindow->setBounds (artArea.reduced (artArea.getWidth() / 12,
+                                                       artArea.getHeight() / 5));
         layoutFromSkin (artArea);
         return;
     }

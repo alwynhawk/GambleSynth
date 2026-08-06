@@ -195,16 +195,23 @@ void GambleSynthProcessor::applyLiveEdit (const Patch& p)
 
 void GambleSynthProcessor::saveFavourite()
 {
-    favourites.push_back (patch);
-    favIndex = (int) favourites.size() - 1;
+    favIndex = library.add (patch);
     notifyChanged();
+}
+
+void GambleSynthProcessor::loadFavourite (int index)
+{
+    if (const auto* e = library.get (index))
+    {
+        favIndex = index;
+        commit (e->patch);
+    }
 }
 
 void GambleSynthProcessor::loadNextFavourite()
 {
-    if (favourites.empty()) return;
-    favIndex = (favIndex + 1) % (int) favourites.size();
-    commit (favourites[(size_t) favIndex]);
+    if (library.size() == 0) return;
+    loadFavourite ((favIndex + 1) % library.size());
 }
 
 // --- Mono / legato: one voice driven from a held-note stack, split at events ---
@@ -265,13 +272,13 @@ void GambleSynthProcessor::monoNoteOff (int note)
 void GambleSynthProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     juce::MemoryOutputStream os (destData, false);
-    os.writeInt (2);                       // state format version
+    os.writeInt (3);                       // state format version
     os.writeInt (chaosMode ? 1 : 0);
     os.writeInt (lockMask);                // v2
     writePatch (os, patch);
-    os.writeInt ((int) favourites.size());
-    for (const auto& fp : favourites)
-        writePatch (os, fp);
+    // v3: the library lives on disk now, so state carries only the sound in
+    // use. Older states still list their favourites; those get imported once.
+    os.writeInt (0);
 }
 
 void GambleSynthProcessor::setStateInformation (const void* data, int sizeInBytes)
@@ -284,11 +291,14 @@ void GambleSynthProcessor::setStateInformation (const void* data, int sizeInByte
     lockMask = (stateVersion >= 2) ? is.readInt() : 0;
     const Patch current = readPatch (is);
 
-    favourites.clear();
+    // A state written before the library moved to disk carries its favourites
+    // inline. Import them so nobody loses what they had saved.
     const int n = is.readInt();
     for (int k = 0; k < n && ! is.isExhausted(); ++k)
-        favourites.push_back (readPatch (is));
-    favIndex = favourites.empty() ? -1 : (int) favourites.size() - 1;
+        library.add (readPatch (is));
+
+    library.refresh();
+    favIndex = library.size() > 0 ? library.size() - 1 : -1;
 
     history.clear();
     histPos = -1;

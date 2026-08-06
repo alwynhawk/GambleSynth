@@ -8,6 +8,7 @@
 #include "../src/LeverDisplay.h"
 #include "../src/Arp.h"
 #include "../src/Wavetables.h"
+#include "../src/Library.h"
 
 int main (int argc, char** argv)
 {
@@ -81,6 +82,7 @@ int main (int argc, char** argv)
             ed->setSize (w, h);
 
             ed->settleReels();      // no message loop here, so land them by hand
+            if (dev) ed->showLibraryForShot();
 
             juce::Image img (juce::Image::ARGB, ed->getWidth(), ed->getHeight(), true);
             {
@@ -985,6 +987,102 @@ int main (int argc, char** argv)
         }
 
         std::cout << "additions: " << (allOk ? "PASS" : "FAIL") << std::endl;
+        return allOk ? 0 : 1;
+    }
+
+    // --- The library. The whole point is that a saved sound outlives the
+    //     instance that saved it, so this works across separate processors and
+    //     a real file on disk. ---
+    bool libTest = false;
+    for (int a = 1; a < argc; ++a) if (juce::String (argv[a]) == "libtest") libTest = true;
+    if (libTest)
+    {
+        // Never run against the real library — this deletes things.
+        auto real = Library::file();
+        auto backup = real.getSiblingFile ("library.testbackup");
+        const bool hadReal = real.existsAsFile();
+        if (hadReal) real.copyFileTo (backup);
+        real.deleteFile();
+
+        bool allOk = true;
+
+        // 1. Saving in one instance, seeing it in another.
+        {
+            {
+                GambleSynthProcessor a;
+                a.rollSeed (4821);
+                a.saveFavourite();
+                a.rollSeed (1234);
+                a.saveFavourite();
+            }   // a is gone: nothing in memory carries these
+
+            GambleSynthProcessor b;
+            const bool ok = (b.getNumFavourites() == 2);
+            allOk = allOk && ok;
+            std::cout << "survives a new instance: " << (ok ? "PASS" : "FAIL")
+                      << "  (" << b.getNumFavourites() << " entries)" << std::endl;
+        }
+
+        // 2. The sound comes back exactly, not approximately.
+        {
+            GambleSynthProcessor a;
+            a.rollSeed (777777);
+            const Patch saved = a.getPatch();
+            a.saveFavourite();
+
+            GambleSynthProcessor b;
+            b.loadFavourite (b.getNumFavourites() - 1);
+
+            juce::MemoryBlock m1, m2;
+            { juce::MemoryOutputStream os (m1, false); writePatch (os, saved); }
+            { juce::MemoryOutputStream os (m2, false); writePatch (os, b.getPatch()); }
+
+            const bool ok = (m1 == m2);
+            allOk = allOk && ok;
+            std::cout << "restores exactly:        " << (ok ? "PASS" : "FAIL") << std::endl;
+        }
+
+        // 3. Rename and delete stick.
+        {
+            Library lib;
+            const int before = lib.size();
+            lib.rename (0, "Renamed Thing");
+
+            Library reread;
+            const bool renamed = reread.size() > 0
+                              && reread.get (0)->name == "Renamed Thing";
+
+            reread.remove (0);
+            Library again;
+            const bool deleted = (again.size() == before - 1);
+
+            allOk = allOk && renamed && deleted;
+            std::cout << "rename persists:         " << (renamed ? "PASS" : "FAIL") << std::endl;
+            std::cout << "delete persists:         " << (deleted ? "PASS" : "FAIL") << std::endl;
+        }
+
+        // 4. A truncated file costs the entries it cannot read, not everything
+        //    before them — a corrupt library should not wipe the collection.
+        {
+            Library lib;
+            const int full = lib.size();
+
+            juce::MemoryBlock data;
+            Library::file().loadFileAsData (data);
+            Library::file().replaceWithData (data.getData(), data.getSize() * 3 / 4);
+
+            Library damaged;
+            const bool ok = damaged.size() > 0 && damaged.size() <= full;
+            allOk = allOk && ok;
+            std::cout << "survives truncation:     " << (ok ? "PASS" : "FAIL")
+                      << "  (" << damaged.size() << " of " << full << " readable)" << std::endl;
+        }
+
+        // Put the real library back.
+        Library::file().deleteFile();
+        if (hadReal) { backup.copyFileTo (real); backup.deleteFile(); }
+
+        std::cout << "library: " << (allOk ? "PASS" : "FAIL") << std::endl;
         return allOk ? 0 : 1;
     }
 

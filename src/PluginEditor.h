@@ -6,6 +6,7 @@
 #include "Skin.h"
 #include "ReelDisplay.h"
 #include "LeverDisplay.h"
+#include "LibraryWindow.h"
 
 // Stereo output meter with peak decay and a clip flag. Click it to clear.
 class OutputMeter : public juce::Component, private juce::Timer
@@ -84,6 +85,9 @@ public:
     void setDevMode (bool shouldBeOn);
 
     // Land the reels now, for headless screenshots.
+    // Open the library panel, for headless screenshots.
+    void showLibraryForShot() { if (libraryWindow == nullptr) toggleLibrary(); }
+
     void settleReels()
     {
         for (auto* r : reels) r->settle();
@@ -109,6 +113,10 @@ private:
 
     void refresh();          // sync labels / button states to the processor
     void applyTypedSeed();
+
+public:
+    void toggleLibrary();
+private:
     int  keyboardHeight() const;
     void layoutFromSkin (juce::Rectangle<int> artArea);
     void layoutPlain();      // the drawn UI, used when there's no artwork
@@ -142,6 +150,7 @@ private:
     juce::Image backdrop;              // fills the window behind the cabinet
     std::unique_ptr<MachineOverlay> overlay;
     std::unique_ptr<LeverDisplay>   lever;
+    std::unique_ptr<LibraryWindow>  libraryWindow;
     juce::Rectangle<int> artArea;      // where the artwork is actually drawn
     juce::OwnedArray<ReelDisplay> reels;
 
