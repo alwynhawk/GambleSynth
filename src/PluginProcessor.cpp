@@ -3,9 +3,66 @@
 #include "SynthVoice.h"
 #include <algorithm>
 
-GambleSynthProcessor::GambleSynthProcessor()
-    : AudioProcessor (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true))
+juce::AudioProcessorValueTreeState::ParameterLayout GambleSynthProcessor::makeLayout()
 {
+    using namespace juce;
+    AudioProcessorValueTreeState::ParameterLayout layout;
+
+    layout.add (std::make_unique<AudioParameterFloat> (
+        ParameterID { ParamID::master, 1 }, "Master",
+        NormalisableRange<float> (0.0f, 1.0f), 0.8f));
+
+    layout.add (std::make_unique<AudioParameterBool> (
+        ParameterID { ParamID::chaos, 1 }, "Chaos", false));
+
+    // A trigger, not a state: the processor watches for the rising edge, so a
+    // host can automate a spike on the bar and get one roll per bar.
+    layout.add (std::make_unique<AudioParameterBool> (
+        ParameterID { ParamID::roll, 1 }, "Roll", false));
+
+    // Stepped so a host shows whole numbers; 0 means "leave the seed alone".
+    layout.add (std::make_unique<AudioParameterInt> (
+        ParameterID { ParamID::seed, 1 }, "Seed", 0, 999999, 0));
+
+    layout.add (std::make_unique<AudioParameterChoice> (
+        ParameterID { ParamID::arpMode, 1 }, "Arp",
+        StringArray { "As rolled", "Off", "Up", "Down", "Up-Down", "Random" }, 0));
+
+    layout.add (std::make_unique<AudioParameterChoice> (
+        ParameterID { ParamID::arpDiv, 1 }, "Arp Rate",
+        StringArray { "As rolled", "1/16", "1/8T", "1/8", "1/8.", "1/4" }, 0));
+
+    // Trims, not absolutes: they scale whatever the roll produced, so they stay
+    // meaningful across every sound rather than fighting the next pull.
+    layout.add (std::make_unique<AudioParameterFloat> (
+        ParameterID { ParamID::filter, 1 }, "Filter Trim",
+        NormalisableRange<float> (-1.0f, 1.0f), 0.0f));
+
+    layout.add (std::make_unique<AudioParameterFloat> (
+        ParameterID { ParamID::reverb, 1 }, "Reverb Trim",
+        NormalisableRange<float> (-1.0f, 1.0f), 0.0f));
+
+    layout.add (std::make_unique<AudioParameterFloat> (
+        ParameterID { ParamID::delayMix, 1 }, "Delay Trim",
+        NormalisableRange<float> (-1.0f, 1.0f), 0.0f));
+
+    return layout;
+}
+
+GambleSynthProcessor::GambleSynthProcessor()
+    : AudioProcessor (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
+      apvts (*this, nullptr, "GambleSynth", makeLayout())
+{
+    pMaster   = apvts.getRawParameterValue (ParamID::master);
+    pChaos    = apvts.getRawParameterValue (ParamID::chaos);
+    pRoll     = apvts.getRawParameterValue (ParamID::roll);
+    pSeed     = apvts.getRawParameterValue (ParamID::seed);
+    pArpMode  = apvts.getRawParameterValue (ParamID::arpMode);
+    pArpDiv   = apvts.getRawParameterValue (ParamID::arpDiv);
+    pFilter   = apvts.getRawParameterValue (ParamID::filter);
+    pReverb   = apvts.getRawParameterValue (ParamID::reverb);
+    pDelayMix = apvts.getRawParameterValue (ParamID::delayMix);
+
     synth.addSound (new GambleSound());
     for (int i = 0; i < 16; ++i)
     {
@@ -25,9 +82,29 @@ GambleSynthProcessor::GambleSynthProcessor()
     commit (rollAudible());      // start on a random sound
     active = patch;              // nothing is sounding yet, so no cut needed
     patchDirty = false;
+
+    startTimerHz (30);
 }
 
-GambleSynthProcessor::~GambleSynthProcessor() = default;
+GambleSynthProcessor::~GambleSynthProcessor() { stopTimer(); }
+
+void GambleSynthProcessor::timerCallback() { serviceHostRequests(); }
+
+void GambleSynthProcessor::serviceHostRequests()
+{
+    if (rollRequested.exchange (false, std::memory_order_relaxed))
+        pullLever();
+
+    if (pSeed != nullptr)
+    {
+        const float v = pSeed->load();
+        if (v >= 0.5f && std::abs (v - lastSeenSeed) >= 0.5f)
+        {
+            lastSeenSeed = v;
+            rollSeed ((unsigned) v);
+        }
+    }
+}
 
 void GambleSynthProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
@@ -272,13 +349,20 @@ void GambleSynthProcessor::monoNoteOff (int note)
 void GambleSynthProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     juce::MemoryOutputStream os (destData, false);
-    os.writeInt (3);                       // state format version
+    os.writeInt (4);                       // state format version
     os.writeInt (chaosMode ? 1 : 0);
     os.writeInt (lockMask);                // v2
     writePatch (os, patch);
     // v3: the library lives on disk now, so state carries only the sound in
     // use. Older states still list their favourites; those get imported once.
     os.writeInt (0);
+
+    // v4: the host's parameter values. Without these a project reload loses
+    // every automated value and any knob the user had moved.
+    if (auto xml = std::unique_ptr<juce::XmlElement> (apvts.copyState().createXml()))
+        os.writeString (xml->toString());
+    else
+        os.writeString ({});
 }
 
 void GambleSynthProcessor::setStateInformation (const void* data, int sizeInBytes)
@@ -299,6 +383,20 @@ void GambleSynthProcessor::setStateInformation (const void* data, int sizeInByte
 
     library.refresh();
     favIndex = library.size() > 0 ? library.size() - 1 : -1;
+
+    if (stateVersion >= 4 && ! is.isExhausted())
+    {
+        const auto text = is.readString();
+        if (text.isNotEmpty())
+            if (auto xml = juce::parseXML (text))
+                if (xml->hasTagName (apvts.state.getType()))
+                    apvts.replaceState (juce::ValueTree::fromXml (*xml));
+    }
+
+    // The restored seed parameter must not immediately re-roll: it describes
+    // the sound that was already restored above.
+    if (pSeed != nullptr)
+        lastSeenSeed = pSeed->load();
 
     history.clear();
     histPos = -1;
@@ -391,6 +489,61 @@ void GambleSynthProcessor::applyTempoSync()
     }
 }
 
+// Host parameters, read once per block. Anything that has to change a patch is
+// flagged here and acted on by the message thread, because rolling allocates and
+// must never happen on the audio thread.
+void GambleSynthProcessor::readHostParameters()
+{
+    // ROLL fires on the rising edge, so automating a spike gives exactly one
+    // roll rather than one per block for as long as the value stays high.
+    const bool rollHigh = pRoll != nullptr && pRoll->load() > 0.5f;
+    if (rollHigh && ! lastRollHigh)
+        rollRequested.store (true, std::memory_order_relaxed);
+    lastRollHigh = rollHigh;
+
+    if (pChaos != nullptr)
+        chaosMode = pChaos->load() > 0.5f;
+
+    // Trims scale what the roll produced rather than replacing it.
+    if (pMaster != nullptr)
+        active.master = juce::jlimit (0.0f, 1.0f, patch.master * pMaster->load() / 0.8f);
+
+    if (pFilter != nullptr)
+    {
+        const float t = pFilter->load();
+        if (std::abs (t) > 0.001f)
+            active.cutoff = juce::jlimit (30.0f, 16000.0f,
+                                          patch.cutoff * std::exp2 (t * 2.5f));
+    }
+
+    if (pReverb != nullptr)
+    {
+        const float t = pReverb->load();
+        if (std::abs (t) > 0.001f)
+            active.reverbMix = juce::jlimit (0.0f, 0.9f, patch.reverbMix + t * 0.5f);
+    }
+
+    if (pDelayMix != nullptr)
+    {
+        const float t = pDelayMix->load();
+        if (std::abs (t) > 0.001f)
+            active.delayMix = juce::jlimit (0.0f, 0.9f, patch.delayMix + t * 0.5f);
+    }
+
+    // "As rolled" (index 0) leaves the patch alone; anything else overrides it.
+    if (pArpMode != nullptr)
+    {
+        const int choice = (int) pArpMode->load();
+        if (choice > 0) active.arpMode = choice - 1;
+    }
+
+    if (pArpDiv != nullptr)
+    {
+        const int choice = (int) pArpDiv->load();
+        if (choice > 0) active.arpDiv = choice;
+    }
+}
+
 void GambleSynthProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     juce::ScopedNoDenormals noDenormals;
@@ -445,6 +598,7 @@ void GambleSynthProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     }
 
     updateTempo();
+    readHostParameters();
     applyTempoSync();
 
     // A dev-panel edit: take it straight away, no fade. Switching voice mode

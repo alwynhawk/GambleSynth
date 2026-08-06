@@ -9,7 +9,27 @@
 
 class GambleVoice; // defined in SynthVoice.h; held by unique_ptr for the mono path
 
-class GambleSynthProcessor : public juce::AudioProcessor
+// What the plugin publishes to the host. Deliberately few: the sound comes from
+// rolls, not from a user turning knobs, so exposing every patch parameter would
+// fight the concept and fill the automation list with things that get
+// overwritten on the next pull. These are the controls a producer would
+// actually reach for — and ROLL is here because automating it to fire on the
+// bar is exactly the sort of thing this synth is for.
+namespace ParamID
+{
+    inline constexpr const char* master   = "master";
+    inline constexpr const char* chaos    = "chaos";
+    inline constexpr const char* roll     = "roll";
+    inline constexpr const char* seed     = "seed";
+    inline constexpr const char* arpMode  = "arpMode";
+    inline constexpr const char* arpDiv   = "arpDiv";
+    inline constexpr const char* filter   = "filterTrim";
+    inline constexpr const char* reverb   = "reverbTrim";
+    inline constexpr const char* delayMix = "delayTrim";
+}
+
+class GambleSynthProcessor : public juce::AudioProcessor,
+                             private juce::Timer
 {
 public:
     GambleSynthProcessor();
@@ -99,7 +119,24 @@ public:
     // Notifies the editor to refresh its labels/buttons after a state change.
     std::function<void()> onPatchChanged;
 
+    juce::AudioProcessorValueTreeState apvts;
+
 private:
+    // Rolls asked for by host automation land here, on the message thread, where
+    // allocating is allowed. Runs whether or not the editor is open — a plugin
+    // in a session usually has its window closed.
+    void timerCallback() override;
+
+public:
+    // Same work, callable directly. A console test has no message loop to fire
+    // the timer, and pumping one is not portable.
+    void serviceHostRequests();
+
+private:
+
+    static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout();
+    void readHostParameters();           // per block, on the audio thread
+
     Patch rollAudible();                 // roll, redrawing if the sound is inaudible
     Patch withLocks (Patch fresh) const; // keep the locked reels from the current sound
     void commit (const Patch& p);        // set current patch + push onto history
@@ -173,6 +210,22 @@ private:
     int delayWrite = 0;
     double currentSampleRate = 44100.0;
     double hostBpm = 120.0;
+
+    // Host-facing parameter cache, read once per block.
+    std::atomic<float>* pMaster   = nullptr;
+    std::atomic<float>* pChaos    = nullptr;
+    std::atomic<float>* pRoll     = nullptr;
+    std::atomic<float>* pSeed     = nullptr;
+    std::atomic<float>* pArpMode  = nullptr;
+    std::atomic<float>* pArpDiv   = nullptr;
+    std::atomic<float>* pFilter   = nullptr;
+    std::atomic<float>* pReverb   = nullptr;
+    std::atomic<float>* pDelayMix = nullptr;
+
+    // ROLL is a trigger, so what matters is the *edge*, not the level.
+    bool  lastRollHigh = false;
+    float lastSeenSeed = -1.0f;
+    std::atomic<bool> rollRequested { false };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GambleSynthProcessor)
 };

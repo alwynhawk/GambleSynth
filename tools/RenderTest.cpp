@@ -1092,6 +1092,162 @@ int main (int argc, char** argv)
         return allOk ? 0 : 1;
     }
 
+    // --- Host parameters. The thing that matters is that a host can drive this
+    //     with the editor closed, and that automating ROLL gives one roll per
+    //     spike rather than one per block. ---
+    bool paramTest = false;
+    for (int a = 1; a < argc; ++a) if (juce::String (argv[a]) == "paramtest") paramTest = true;
+    if (paramTest)
+    {
+        bool allOk = true;
+        GambleSynthProcessor pr;
+        pr.setPlayConfigDetails (0, 2, sr, block);
+        pr.prepareToPlay (sr, block);
+
+        auto& state = pr.apvts;
+
+        // 1. The plugin publishes parameters at all, with names a host can show.
+        {
+            const auto& params = pr.getParameters();
+            const bool ok = params.size() >= 8;
+            allOk = allOk && ok;
+            std::cout << "publishes parameters: " << (ok ? "PASS" : "FAIL")
+                      << "  (" << params.size() << ")" << std::endl;
+            for (auto* p : params)
+                std::cout << "    " << p->getName (24) << std::endl;
+        }
+
+        auto runBlocks = [&] (int n)
+        {
+            juce::AudioBuffer<float> work (2, block);
+            for (int b = 0; b < n; ++b)
+            {
+                work.clear();
+                juce::MidiBuffer midi;
+                pr.processBlock (work, midi);
+            }
+            // In the plugin a timer does this; here there is no message loop,
+            // so call the same work directly.
+            pr.serviceHostRequests();
+        };
+
+        // 2. Automating ROLL high then low gives exactly one roll.
+        {
+            auto* roll = state.getParameter (ParamID::roll);
+            const int before = pr.getPatch().seed;
+
+            roll->setValueNotifyingHost (1.0f);
+            runBlocks (10);
+            const int afterHigh = pr.getPatch().seed;
+
+            // Holding it high must not keep rolling.
+            runBlocks (30);
+            const int afterHold = pr.getPatch().seed;
+
+            roll->setValueNotifyingHost (0.0f);
+            runBlocks (5);
+            roll->setValueNotifyingHost (1.0f);
+            runBlocks (10);
+            const int afterSecond = pr.getPatch().seed;
+
+            const bool rolled     = (afterHigh != before);
+            const bool heldSteady = (afterHold == afterHigh);
+            const bool rolledAgain = (afterSecond != afterHold);
+
+            allOk = allOk && rolled && heldSteady && rolledAgain;
+            std::cout << "roll on rising edge:  "
+                      << ((rolled && heldSteady && rolledAgain) ? "PASS" : "FAIL")
+                      << "  " << before << " -> " << afterHigh
+                      << " (held " << afterHold << ") -> " << afterSecond << std::endl;
+        }
+
+        // 3. The seed parameter recalls a specific sound.
+        {
+            auto* seed = state.getParameter (ParamID::seed);
+            seed->setValueNotifyingHost (seed->convertTo0to1 (4821.0f));
+            runBlocks (10);
+
+            const bool ok = (pr.getPatch().seed == 4821);
+            allOk = allOk && ok;
+            std::cout << "seed parameter:       " << (ok ? "PASS" : "FAIL")
+                      << "  (landed on " << pr.getPatch().seed << ")" << std::endl;
+        }
+
+        // 4. Chaos follows the parameter.
+        {
+            auto* chaos = state.getParameter (ParamID::chaos);
+            chaos->setValueNotifyingHost (1.0f);
+            runBlocks (4);
+            const bool on = pr.isChaos();
+            chaos->setValueNotifyingHost (0.0f);
+            runBlocks (4);
+            const bool off = ! pr.isChaos();
+
+            allOk = allOk && on && off;
+            std::cout << "chaos parameter:      " << ((on && off) ? "PASS" : "FAIL") << std::endl;
+        }
+
+        // 5. Trims audibly change the sound without silencing it.
+        {
+            auto measure = [&] (float trim)
+            {
+                state.getParameter (ParamID::filter)
+                     ->setValueNotifyingHost (state.getParameter (ParamID::filter)
+                                                   ->convertTo0to1 (trim));
+                juce::AudioBuffer<float> work (2, block);
+                for (int b = 0; b < 4; ++b)
+                { work.clear(); juce::MidiBuffer e; pr.processBlock (work, e); }
+
+                float peak = 0.0f;
+                double energy = 0.0;
+                for (int b = 0; b < 90; ++b)
+                {
+                    work.clear();
+                    juce::MidiBuffer midi;
+                    if (b == 0) midi.addEvent (juce::MidiMessage::noteOn (1, 60, 0.9f), 0);
+                    pr.processBlock (work, midi);
+                    peak = juce::jmax (peak, work.getMagnitude (0, block));
+                    for (int n = 1; n < block; ++n)
+                        energy += std::abs (work.getSample (0, n) - work.getSample (0, n - 1));
+                }
+                return std::make_pair (peak, energy);
+            };
+
+            const auto dark   = measure (-1.0f);
+            const auto bright = measure (1.0f);
+
+            // A darker filter must move less between samples than a bright one.
+            const bool ok = dark.first > 0.005f && bright.first > 0.005f
+                         && dark.second < bright.second;
+            allOk = allOk && ok;
+            std::cout << "filter trim works:    " << (ok ? "PASS" : "FAIL")
+                      << "  dark " << juce::String (dark.second, 0)
+                      << " vs bright " << juce::String (bright.second, 0) << std::endl;
+        }
+
+        // 6. Parameter state survives a save/load, which is how a host restores
+        //    automation with the project.
+        {
+            state.getParameter (ParamID::master)
+                 ->setValueNotifyingHost (0.42f);
+
+            juce::MemoryBlock mb;
+            pr.getStateInformation (mb);
+
+            GambleSynthProcessor other;
+            other.setStateInformation (mb.getData(), (int) mb.getSize());
+
+            const float restored = other.apvts.getParameter (ParamID::master)->getValue();
+            const bool ok = std::abs (restored - 0.42f) < 0.01f;
+            allOk = allOk && ok;
+            std::cout << "params survive state: " << (ok ? "PASS" : "FAIL")
+                      << "  (" << juce::String (restored, 3) << ")" << std::endl;
+        }
+
+        std::cout << "host parameters: " << (allOk ? "PASS" : "FAIL") << std::endl;
+        return allOk ? 0 : 1;
+    }
+
     // --- Worst-case CPU: 16 held notes, 7-voice unison each, whole FX rack on,
     //     measured with and without oversampling. ---
     bool perfTest = false;

@@ -108,6 +108,7 @@ GambleSynthEditor::GambleSynthEditor (GambleSynthProcessor& p)
     proc.onPatchChanged = [this] { refresh(); };
     refresh();
 
+
     if (skin.isValid())
     {
         // Always opens at the same size, and can only be resized along the
