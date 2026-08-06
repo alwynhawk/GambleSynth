@@ -87,7 +87,14 @@ int main (int argc, char** argv)
             ed->setSize (w, h);
 
             ed->settleReels();      // no message loop here, so land them by hand
-            if (dev) ed->showLibraryForShot();
+            if (dev)
+            {
+                // A few entries so the panel shows something in the shot.
+                if (proc.getNumFavourites() < 4)
+                    for (unsigned sd : { 4821u, 12345u, 609909u, 67890u })
+                    { proc.rollSeed (sd); proc.saveFavourite(); }
+                ed->showLibraryForShot();
+            }
 
             juce::Image img (juce::Image::ARGB, ed->getWidth(), ed->getHeight(), true);
             {

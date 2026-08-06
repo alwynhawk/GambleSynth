@@ -17,7 +17,7 @@ public:
         : proc (p), closeFn (std::move (onClose))
     {
         list.setModel (this);
-        list.setRowHeight (26);
+        list.setRowHeight (34);
         list.setColour (juce::ListBox::backgroundColourId, juce::Colours::transparentBlack);
         list.setColour (juce::ListBox::outlineColourId,    juce::Colours::transparentBlack);
         addAndMakeVisible (list);
@@ -66,9 +66,8 @@ public:
         g.drawRect (r, 2);
 
         auto header = r.removeFromTop (headerH);
-        g.setFont (Theme::mono (16.0f, true));
-        Theme::drawOutlined (g, "SAVED SOUNDS", header.reduced (12, 0),
-                             juce::Justification::centredLeft, Theme::mono (16.0f, true));
+        Theme::drawOutlined (g, "SAVED SOUNDS", header.reduced (14, 0),
+                             juce::Justification::centredLeft, Theme::mono (19.0f, true));
 
         g.setColour (juce::Colours::white.withAlpha (0.4f));
         g.fillRect (r.getX(), header.getBottom(), r.getWidth(), 1);
@@ -76,7 +75,7 @@ public:
         if (proc.getLibrary().size() == 0)
         {
             g.setColour (juce::Colours::white.withAlpha (0.5f));
-            g.setFont (Theme::mono (13.0f));
+            g.setFont (Theme::mono (15.0f));
             g.drawText ("Nothing saved yet - hit SAVE on a sound you like",
                         getLocalBounds(), juce::Justification::centred, false);
         }
@@ -87,7 +86,7 @@ public:
         auto r = getLocalBounds().reduced (2);
         r.removeFromTop (headerH);
 
-        auto footer = r.removeFromBottom (40).reduced (8, 6);
+        auto footer = r.removeFromBottom (46).reduced (8, 7);
         const int w = footer.getWidth() / 4;
         loadButton.setBounds   (footer.removeFromLeft (w).reduced (3, 0));
         renameButton.setBounds (footer.removeFromLeft (w).reduced (3, 0));
@@ -114,13 +113,13 @@ private:
         }
 
         g.setColour (juce::Colours::white);
-        g.setFont (Theme::mono (13.0f, selected));
-        g.drawText (e->name, 8, 0, width - 90, height, juce::Justification::centredLeft, true);
+        g.setFont (Theme::mono (17.0f, selected));
+        g.drawText (e->name, 10, 0, width - 100, height, juce::Justification::centredLeft, true);
 
-        g.setColour (juce::Colours::white.withAlpha (0.45f));
-        g.setFont (Theme::mono (11.0f));
+        g.setColour (juce::Colours::white.withAlpha (0.5f));
+        g.setFont (Theme::mono (14.0f));
         g.drawText (juce::String (e->patch.seed).paddedLeft ('0', 6),
-                    width - 80, 0, 72, height, juce::Justification::centredRight, false);
+                    width - 92, 0, 84, height, juce::Justification::centredRight, false);
     }
 
     void listBoxItemDoubleClicked (int row, const juce::MouseEvent&) override
@@ -166,7 +165,7 @@ private:
         editor = std::make_unique<juce::TextEditor>();
         editor->setText (e->name);
         editor->selectAll();
-        editor->setFont (Theme::mono (13.0f));
+        editor->setFont (Theme::mono (17.0f));
         editor->setColour (juce::TextEditor::backgroundColourId, juce::Colours::black);
         editor->setColour (juce::TextEditor::textColourId,       juce::Colours::white);
         editor->setColour (juce::TextEditor::outlineColourId,    juce::Colours::white);
@@ -195,7 +194,7 @@ private:
         deleteButton.setEnabled (has);
     }
 
-    static constexpr int headerH = 34;
+    static constexpr int headerH = 40;
 
     GambleSynthProcessor& proc;
     std::function<void()> closeFn;

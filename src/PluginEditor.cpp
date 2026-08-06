@@ -357,8 +357,14 @@ void GambleSynthEditor::resized()
             libraryCatcher->setBounds (getLocalBounds());
 
         if (libraryWindow != nullptr)
-            libraryWindow->setBounds (artArea.reduced (artArea.getWidth() / 12,
-                                                       artArea.getHeight() / 5));
+        {
+            // A compact panel over the middle of the machine, rather than most
+            // of it. Sized in artwork proportions so it scales with the window.
+            const int w = juce::jlimit (300, 460, artArea.getWidth() * 3 / 4);
+            const int h = juce::jlimit (260, 400, artArea.getHeight() * 5 / 12);
+            libraryWindow->setBounds (juce::Rectangle<int> (w, h)
+                                          .withCentre (artArea.getCentre()));
+        }
         layoutFromSkin (artArea);
         return;
     }
