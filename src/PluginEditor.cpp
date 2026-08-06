@@ -158,14 +158,27 @@ void GambleSynthEditor::toggleLibrary()
 {
     if (libraryWindow != nullptr)
     {
-        libraryWindow.reset();
+        closeLibrary();
         return;
     }
 
-    libraryWindow = std::make_unique<LibraryWindow> (proc, [this] { libraryWindow.reset(); });
+    // The catcher goes in first so it sits *behind* the panel: clicks on the
+    // panel reach the panel, clicks anywhere else land here and close it.
+    libraryCatcher = std::make_unique<ClickCatcher> ([this] { closeLibrary(); });
+    addAndMakeVisible (*libraryCatcher);
+    libraryCatcher->setBounds (getLocalBounds());
+    libraryCatcher->toFront (false);
+
+    libraryWindow = std::make_unique<LibraryWindow> (proc, [this] { closeLibrary(); });
     addAndMakeVisible (*libraryWindow);
     libraryWindow->toFront (true);
     resized();
+}
+
+void GambleSynthEditor::closeLibrary()
+{
+    libraryWindow.reset();
+    libraryCatcher.reset();
 }
 
 void GambleSynthEditor::setDevMode (bool shouldBeOn)
@@ -339,6 +352,9 @@ void GambleSynthEditor::resized()
         artArea = Skin::fitArtwork (bounds);
         if (overlay != nullptr) overlay->setBounds (artArea);
         if (lever   != nullptr) lever->setBounds (artArea);
+
+        if (libraryCatcher != nullptr)
+            libraryCatcher->setBounds (getLocalBounds());
 
         if (libraryWindow != nullptr)
             libraryWindow->setBounds (artArea.reduced (artArea.getWidth() / 12,

@@ -52,6 +52,17 @@ private:
     GambleSynthProcessor& proc;
 };
 
+// Catches clicks anywhere outside the library panel and closes it. Sits behind
+// the panel and covers the whole editor, which is the only reliable way to get
+// click-outside on a child component — the alternative is watching global mouse
+// events, which misbehaves inside plugin hosts.
+struct ClickCatcher : juce::Component
+{
+    explicit ClickCatcher (std::function<void()> fn) : onClick (std::move (fn)) {}
+    void mouseDown (const juce::MouseEvent&) override { if (onClick) onClick(); }
+    std::function<void()> onClick;
+};
+
 // Draws the cabinet on top of the keyboard, so the keys show through the
 // JACKPOT cut-out with the frame overlapping them. Mouse-transparent, so
 // clicking a key still reaches the keyboard underneath.
@@ -117,6 +128,7 @@ private:
 public:
     void toggleLibrary();
 private:
+    void closeLibrary();
     int  keyboardHeight() const;
     void layoutFromSkin (juce::Rectangle<int> artArea);
     void layoutPlain();      // the drawn UI, used when there's no artwork
@@ -151,6 +163,7 @@ private:
     std::unique_ptr<MachineOverlay> overlay;
     std::unique_ptr<LeverDisplay>   lever;
     std::unique_ptr<LibraryWindow>  libraryWindow;
+    std::unique_ptr<ClickCatcher>   libraryCatcher;
     juce::Rectangle<int> artArea;      // where the artwork is actually drawn
     juce::OwnedArray<ReelDisplay> reels;
 

@@ -14,6 +14,11 @@ int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
 
+    // Never touch the user's real saved sounds: every mode below saves
+    // favourites, and they would otherwise pile up in the actual library.
+    Library::testMode() = true;
+    Library::file().deleteFile();
+
     const double sr = 44100.0;
     const int    block = 512;
     const double seconds = 4.0;
@@ -997,12 +1002,8 @@ int main (int argc, char** argv)
     for (int a = 1; a < argc; ++a) if (juce::String (argv[a]) == "libtest") libTest = true;
     if (libTest)
     {
-        // Never run against the real library — this deletes things.
-        auto real = Library::file();
-        auto backup = real.getSiblingFile ("library.testbackup");
-        const bool hadReal = real.existsAsFile();
-        if (hadReal) real.copyFileTo (backup);
-        real.deleteFile();
+        // testMode already points at a scratch file; just start from empty.
+        Library::file().deleteFile();
 
         bool allOk = true;
 
@@ -1078,9 +1079,7 @@ int main (int argc, char** argv)
                       << "  (" << damaged.size() << " of " << full << " readable)" << std::endl;
         }
 
-        // Put the real library back.
         Library::file().deleteFile();
-        if (hadReal) { backup.copyFileTo (real); backup.deleteFile(); }
 
         std::cout << "library: " << (allOk ? "PASS" : "FAIL") << std::endl;
         return allOk ? 0 : 1;

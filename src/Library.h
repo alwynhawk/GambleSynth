@@ -23,7 +23,16 @@ public:
     {
         return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
                    .getChildFile ("GambleSynth")
-                   .getChildFile ("library.dat");
+                   .getChildFile (testMode() ? "library.test.dat" : "library.dat");
+    }
+
+    // Tests save favourites constantly. Without this they write into the real
+    // library, and the user opens the panel to find dozens of sounds they never
+    // saved — which is exactly what happened.
+    static bool& testMode()
+    {
+        static bool on = false;
+        return on;
     }
 
     int size() const { return entries.size(); }
