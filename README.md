@@ -5,7 +5,8 @@ Pull the lever, get a synth patch.
 ## Installing
 
 Run **GambleSynth-x.y.z-Windows.exe** and pick what you want: the VST3 for your
-DAW, the standalone app, or both.
+DAW, the standalone app, or both. Installing over an older version replaces it —
+no need to uninstall first.
 
 The build isn't code-signed yet, so Windows shows a "protected your PC" box on
 first run. Click *More info* then *Run anyway*.

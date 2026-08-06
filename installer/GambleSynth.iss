@@ -36,6 +36,36 @@ PrivilegesRequired=admin
 ArchitecturesInstallIn64BitMode=x64compatible
 ArchitecturesAllowed=x64compatible
 UninstallDisplayName={#AppName} {#AppVersion}
+; Upgrading in place. Without these, Inno recognises the existing install by
+; AppId and refuses rather than replacing it — every update would mean
+; uninstalling by hand first.
+UsePreviousAppDir=yes
+UsePreviousGroup=yes
+UsePreviousTasks=yes
+; A VST3 that a host has loaded is locked, so say which files are in use rather
+; than failing on a sharing violation.
+CloseApplications=yes
+CloseApplicationsFilter=*.exe,*.vst3
+RestartApplications=no
+
+[Code]
+// Inno only knows about installs it made. A VST3 copied in by hand — which is
+// how this was tested before there was an installer — sits in the same place
+// and would otherwise be left behind, mixing old files with new.
+//
+// Cleared during ssInstall, which runs *before* [Files] are copied, so the new
+// build lands in an empty folder rather than on top of the old one.
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  Stray: String;
+begin
+  if CurStep = ssInstall then
+  begin
+    Stray := ExpandConstant('{commoncf64}\VST3\GambleSynth.vst3');
+    if DirExists(Stray) then
+      DelTree(Stray, True, True, True);
+  end;
+end;
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
