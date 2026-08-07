@@ -39,6 +39,12 @@ GambleSynthEditor::GambleSynthEditor (GambleSynthProcessor& p)
         refresh();
     };
 
+    addAndMakeVisible (creditsDisplay);
+
+    shopButton.setButtonText ("SHOP SOON");
+    shopButton.setEnabled (false);          // nothing to sell yet
+    addAndMakeVisible (shopButton);
+
     seedEditor.setInputRestrictions (6, "0123456789");
     seedEditor.setTextToShowWhenEmpty ("SEED", juce::Colours::black.withAlpha (0.45f));
     seedEditor.setJustification (juce::Justification::centred);
@@ -112,6 +118,7 @@ GambleSynthEditor::GambleSynthEditor (GambleSynthProcessor& p)
         // The seed already reads on the WINS strip; the tray gets the nudge.
         seedLabel.setVisible (false);
         nudgeButton.setLookAndFeel (&skinned);
+        shopButton.setLookAndFeel (&skinned);
     }
 
     proc.onPatchChanged = [this] { refresh(); };
@@ -267,9 +274,9 @@ void GambleSynthEditor::refresh()
 
     {
         const int credits = proc.getNudgeCredits();
-        nudgeButton.setButtonText (credits > 0 ? "NUDGE  " + juce::String (credits)
-                                               : "NUDGE  --");
+        nudgeButton.setButtonText ("NUDGE");
         nudgeButton.setEnabled (credits > 0);
+        creditsDisplay.set (credits);
 
         // Say what a win paid, so the reels visibly decide something.
         const int paid = proc.getLastPayout();
@@ -404,7 +411,9 @@ void GambleSynthEditor::layoutFromSkin (juce::Rectangle<int> art)
     const auto& L = Skin::layout();
     auto at = [art] (juce::Rectangle<float> norm) { return Skin::place (norm, art); };
 
-    nudgeButton.setBounds (at (L.seedDisplay));
+    nudgeButton.setBounds    (at (L.nudge));
+    creditsDisplay.setBounds (at (L.credits));
+    shopButton.setBounds     (at (L.shop));
     seedEditor.setBounds  (at (L.seedEntry));
     goButton.setBounds    (at (L.go));
     undoButton.setBounds  (at (L.undo));

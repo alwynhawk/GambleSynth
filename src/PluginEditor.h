@@ -52,6 +52,53 @@ private:
     GambleSynthProcessor& proc;
 };
 
+// The nudge balance: a number and a gold G, drawn together so the G stays the
+// accent colour while the count matches every other readout on the cabinet.
+struct CreditsDisplay : juce::Component
+{
+    int credits = 0;
+
+    void set (int c)
+    {
+        if (c == credits) return;
+        credits = c;
+        repaint();
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        const auto font = Theme::mono (juce::jlimit (10.0f, 26.0f, getHeight() * 0.42f), true);
+        const juce::String number (credits);
+
+        // Lay the number and the G out as one line, then split the space so the
+        // pair stays centred whatever the count is.
+        const int gapW = juce::roundToInt (font.getHeight() * 0.35f);
+        const int numW = juce::GlyphArrangement::getStringWidthInt (font, number);
+        const int gW   = juce::GlyphArrangement::getStringWidthInt (font, "G");
+        const int total = numW + gapW + gW;
+
+        auto r = getLocalBounds();
+        auto line = r.withWidth (total).withCentre (r.getCentre());
+
+        Theme::drawOutlined (g, number, line.removeFromLeft (numW),
+                             juce::Justification::centred, font);
+        line.removeFromLeft (gapW);
+
+        juce::GlyphArrangement ga;
+        ga.addFittedText (font, "G", (float) line.getX(), (float) line.getY(),
+                          (float) line.getWidth(), (float) line.getHeight(),
+                          juce::Justification::centred, 1);
+        juce::Path path;
+        ga.createPath (path);
+        g.setColour (juce::Colours::black);
+        g.strokePath (path, juce::PathStrokeType (juce::jmax (2.5f, font.getHeight() * 0.22f),
+                                                  juce::PathStrokeType::curved,
+                                                  juce::PathStrokeType::rounded));
+        g.setColour (Theme::gold());
+        g.fillPath (path);
+    }
+};
+
 // Catches clicks anywhere outside the library panel and closes it. Sits behind
 // the panel and covers the whole editor, which is the only reliable way to get
 // click-outside on a child component — the alternative is watching global mouse
@@ -150,6 +197,8 @@ private:
     juce::TextButton goButton    { "GO" };
     juce::Label      seedLabel;
     juce::TextButton nudgeButton;
+    juce::TextButton shopButton;
+    CreditsDisplay   creditsDisplay;
     juce::TextEditor seedEditor;
     FlatKeyboard keyboard;
 

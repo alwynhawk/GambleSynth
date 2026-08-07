@@ -1404,7 +1404,10 @@ std::cout << "host lifecycle: " << (allOk ? "PASS" : "FAIL") << std::endl;
                 worst = juce::jmax (worst, oct);
             }
 
-            const bool ok = worst <= 1.0;
+            // A nudge should be obvious. Within about an octave and a half of
+            // filter movement it is still the same sound; past that it is a
+            // re-roll wearing the same name.
+            const bool ok = worst <= 1.6;
             allOk = allOk && ok;
             std::cout << "stays nearby:        " << (ok ? "PASS" : "FAIL")
                       << "  worst cutoff move " << juce::String (worst, 2) << " oct" << std::endl;

@@ -77,8 +77,11 @@ namespace Skin
         juce::Rectangle<float> go        { px (  0.0f,   0.0f,   0.0f,  0.0f) };  // folded into the box
         juce::Rectangle<float> meter     { px (525.0f, 310.0f, 182.0f, 27.0f) };
 
-        // The coin tray is the big readout, like a payout window.
-        juce::Rectangle<float> seedDisplay { px (282.0f, 1060.0f, 292.0f, 60.0f) };
+        // The coin tray holds what winnings buy. Button heights match the
+        // SAVE/LOAD/CHAOS row above so the text is the same size as the rest.
+        juce::Rectangle<float> nudge   { px (282.0f, 1046.0f, 172.0f, 52.0f) };
+        juce::Rectangle<float> credits { px (462.0f, 1046.0f, 110.0f, 52.0f) };
+        juce::Rectangle<float> shop    { px (282.0f, 1104.0f, 290.0f, 50.0f) };
 
         // The band between the reels and the window.
         juce::Rectangle<float> save  { px (152.0f, 664.0f, 170.0f, 52.0f) };

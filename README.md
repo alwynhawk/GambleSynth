@@ -33,7 +33,8 @@ There's also a portable zip if you'd rather drop the `.vst3` in by hand.
   put, so it's still recognisably the patch you had. Press again to drift
   further. Turns a near-miss roll into a keeper, and pairs with HOLD.
 - **Nudges are won, not given.** Three matching fruit pay 2, three sevens pay
-  20. You start with 5. That's what the reels are for.
+  20, shown as **G** in the coin tray. You start with 5. That's what the reels
+  are for.
 - **< / >** — step back and forward through the last 64 rolls.
 - **SEED** — every sound has a 6-digit code. Type someone else's in and press
   Return to get the exact same sound. Send me the good ones.
