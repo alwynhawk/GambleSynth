@@ -100,7 +100,8 @@ public:
                    + " / " + juce::String (d.blockSize.load())
                    + " / " + juce::String (d.channels.load()) + "ch");
         lines.add ("blocks " + juce::String (blocks)
-                   + (blocks == lastBlocks ? " (STALLED)" : " (running)"));
+                   + (blocksPerTick > 0 ? " (+" + juce::String (blocksPerTick) + "/tick)"
+                                        : " (STALLED)"));
         lines.add ("notes in " + juce::String (d.notesIn.load())
                    + "   voices " + juce::String (d.voicesOn.load()));
         lines.add ("voice peak " + juce::String (vPeak, 4)
@@ -109,7 +110,8 @@ public:
         // Say what the numbers mean, so the reading is actionable.
         juce::String verdict;
         if (! d.prepared.load())          verdict = "never prepared";
-        else if (blocks == lastBlocks)    verdict = "processBlock not running";
+        else if (blocks == 0)             verdict = "processBlock NEVER called";
+        else if (blocksPerTick <= 0)      verdict = "processBlock stopped";
         else if (d.notesIn.load() == 0)   verdict = "no MIDI arriving";
         else if (d.voicesOn.load() == 0)  verdict = "notes arrive but no voice starts";
         else if (vPeak < 0.0001f)         verdict = "voices active but silent";
@@ -330,12 +332,18 @@ private:
 
     void timerCallback() override
     {
-        // Repaint the strip; lastBlocks makes a stalled processBlock obvious.
+        // Work out the delta here rather than in paint(). repaint() is async, so
+        // comparing counts inside paint() compares against a marker this
+        // callback has already moved — the reading has to be taken and compared
+        // in one place.
+        const int now = proc.getDiagnostics().blocks.load();
+        blocksPerTick = now - lastBlocks;
+        lastBlocks = now;
         repaint (getLocalBounds().removeFromBottom (diagH));
-        lastBlocks = proc.getDiagnostics().blocks.load();
     }
 
-    int lastBlocks = -1;
+    int lastBlocks     = 0;
+    int blocksPerTick  = 0;
 
     GambleSynthProcessor& proc;
     juce::Viewport  viewport;
