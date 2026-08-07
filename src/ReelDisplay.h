@@ -30,13 +30,13 @@ public:
         // matching symbols land before the third does. A near miss is a quarter
         // of all pulls and only means anything if you get to see it coming.
         startedAtMs = juce::Time::getMillisecondCounter();
-        stopAtMs    = startedAtMs + 620 + (juce::uint32) reelIndex * 430;
+        stopAtMs    = startedAtMs + 850 + (juce::uint32) reelIndex * 550;
         landedAtMs  = 0;
 
         // How many symbols pass before it lands. Fixed per reel so the motion
         // is a known distance over a known time rather than whatever the frame
         // rate happened to deliver.
-        travelSteps = 11 + reelIndex * 5;
+        travelSteps = 10 + reelIndex * 4;
         startTimerHz (60);
     }
 
@@ -132,10 +132,10 @@ private:
     {
        #if GAMBLESYNTH_HAS_ASSETS
         const int   n    = (int) Fruit::NumFruits;
-        // Spaced slightly further apart than they are tall, so the strip reads
-        // as separate symbols on a belt rather than fruit piled on fruit.
-        const float side = juce::jmin (r.getWidth(), r.getHeight()) * 0.82f;
-        const float step = r.getHeight() * 0.94f;
+        // Spaced further apart than they are tall, so the strip reads as
+        // separate symbols on a belt rather than fruit piled on fruit.
+        const float side = fruitSide (r);
+        const float step = r.getHeight() * 0.98f;
 
         const float travel = travelled();
         const int   base   = (int) std::floor (travel);
@@ -179,6 +179,15 @@ private:
         g.setColour ((sevens ? Theme::gold() : juce::Colours::white)
                          .withAlpha (0.85f * pulse * fade));
         g.drawRect (r.reduced (2.0f), sevens ? 4.0f : 3.0f);
+    }
+
+    // One size for a fruit, wherever it is drawn. The sprites are 101 px square
+    // and the reel window is about that wide at the default window size, so this
+    // lands on 1:1 - no resampling, and no change of size when a spinning reel
+    // stops and hands over to the landed symbol.
+    static float fruitSide (juce::Rectangle<float> r)
+    {
+        return juce::jmin (r.getWidth(), r.getHeight()) * 0.96f;
     }
 
     // Which symbol this reel is showing, derived from the sound itself.
@@ -244,9 +253,9 @@ private:
         // leaves it part-transparent from drawing its divider lines.
         g.setColour (juce::Colours::white);
 
-        // Square, centred, filling most of the window — it is the backdrop the
-        // sound glyph sits on, so it wants to be big.
-        const float side = juce::jmin (r.getWidth(), r.getHeight()) * 0.86f;
+        // Same size as the spinning strip uses, so nothing changes size at the
+        // moment a reel lands.
+        const float side = fruitSide (r);
         g.drawImage (img, juce::Rectangle<float> (side, side).withCentre (r.getCentre()),
                      juce::RectanglePlacement::centred, false);
        #else
