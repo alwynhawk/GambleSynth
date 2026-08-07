@@ -3,6 +3,34 @@
 #include "SynthVoice.h"
 #include <algorithm>
 
+// Appended to, never rewritten, so the order of events across instances is the
+// record. Message-thread calls and the first audio call only — this must never
+// become per-block file I/O on the audio thread.
+void GambleSynthProcessor::hostLog (const juce::String& what)
+{
+    // Tests construct processors constantly; they must not write into the log a
+    // user is about to send.
+    if (Library::testMode())
+        return;
+
+    static std::atomic<int> nextId { 0 };
+    if (instanceId == 0)
+        instanceId = ++nextId;
+
+    auto f = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
+                 .getChildFile ("GambleSynth").getChildFile ("hostlog.txt");
+    f.getParentDirectory().createDirectory();
+
+    const auto line = juce::Time::getCurrentTime().toString (false, true, true, true)
+                    + "  #" + juce::String (instanceId)
+                    + "  thread " + juce::String::toHexString ((juce::int64) (juce::pointer_sized_int)
+                                        juce::Thread::getCurrentThreadId())
+                    + (juce::MessageManager::existsAndIsCurrentThread() ? " (msg)" : "")
+                    + "  " + what + juce::newLine;
+
+    f.appendText (line, false, false, nullptr);
+}
+
 juce::AudioProcessorValueTreeState::ParameterLayout GambleSynthProcessor::makeLayout()
 {
     using namespace juce;
@@ -83,6 +111,8 @@ GambleSynthProcessor::GambleSynthProcessor()
     active = patch;              // nothing is sounding yet, so no cut needed
     patchDirty = false;
 
+    hostLog ("constructed");
+
     // Not started here. A host may construct the plugin on a background thread
     // while scanning, and starting a Timer off the message thread is undefined.
     // Hand it to the message thread, and let the token say whether this
@@ -97,6 +127,7 @@ GambleSynthProcessor::GambleSynthProcessor()
 
 GambleSynthProcessor::~GambleSynthProcessor()
 {
+    hostLog ("destroyed");
     alive.reset();          // any queued start becomes a no-op
     stopTimer();
 }
@@ -154,6 +185,10 @@ void GambleSynthProcessor::prepareToPlay (double sampleRate, int samplesPerBlock
     diag.sampleRate.store ((int) sampleRate);
     diag.blockSize.store (maxBlockSize);
     diag.prepared.store (true);
+
+    hostLog ("prepareToPlay  " + juce::String (sampleRate) + " Hz / "
+             + juce::String (samplesPerBlock) + " smp / "
+             + juce::String (getTotalNumOutputChannels()) + "ch out");
 }
 
 bool GambleSynthProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -569,6 +604,12 @@ void GambleSynthProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     // Recorded before any guard, so being turned away here is distinguishable
     // from never being called.
     diag.entries.fetch_add (1, std::memory_order_relaxed);
+
+    // Once only: proof the host reached the audio path at all, and on which
+    // thread. Never per block — this is file I/O.
+    if (! loggedFirstProcess.exchange (true, std::memory_order_relaxed))
+        hostLog ("first processBlock  " + juce::String (buffer.getNumChannels())
+                 + "ch / " + juce::String (numSamples) + " smp");
     diag.inChannels.store (buffer.getNumChannels(), std::memory_order_relaxed);
     diag.inSamples.store (numSamples, std::memory_order_relaxed);
 
@@ -853,6 +894,7 @@ void GambleSynthProcessor::updateMeter (const float* L, const float* R, int numS
 
 juce::AudioProcessorEditor* GambleSynthProcessor::createEditor()
 {
+    hostLog ("createEditor");
     return new GambleSynthEditor (*this);
 }
 

@@ -36,7 +36,7 @@ public:
     ~GambleSynthProcessor() override;
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
-    void releaseResources() override {}
+    void releaseResources() override { hostLog ("releaseResources"); }
     bool isBusesLayoutSupported (const BusesLayout& layouts) const override;
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
@@ -247,6 +247,14 @@ private:
     std::atomic<float>* pFilter   = nullptr;
     std::atomic<float>* pReverb   = nullptr;
     std::atomic<float>* pDelayMix = nullptr;
+
+    // Host call log. The dev panel can only ever show the instance whose editor
+    // is open, and a host may have several — one scanned, one previewed, one
+    // actually wired to the audio graph. This records what every instance was
+    // asked to do, with thread ids, so the real sequence is visible.
+    void hostLog (const juce::String& what);
+    int  instanceId = 0;
+    std::atomic<bool> loggedFirstProcess { false };
 
     // The host-request timer is started on the message thread, never in the
     // constructor: hosts build plugins on background scanning threads, and a
