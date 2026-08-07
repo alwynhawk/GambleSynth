@@ -83,10 +83,23 @@ GambleSynthProcessor::GambleSynthProcessor()
     active = patch;              // nothing is sounding yet, so no cut needed
     patchDirty = false;
 
-    startTimerHz (30);
+    // Not started here. A host may construct the plugin on a background thread
+    // while scanning, and starting a Timer off the message thread is undefined.
+    // Hand it to the message thread, and let the token say whether this
+    // processor still exists by the time that runs.
+    std::weak_ptr<bool> token = alive;
+    juce::MessageManager::callAsync ([this, token]
+    {
+        if (token.lock() != nullptr)
+            startTimerHz (30);
+    });
 }
 
-GambleSynthProcessor::~GambleSynthProcessor() { stopTimer(); }
+GambleSynthProcessor::~GambleSynthProcessor()
+{
+    alive.reset();          // any queued start becomes a no-op
+    stopTimer();
+}
 
 void GambleSynthProcessor::timerCallback() { serviceHostRequests(); }
 

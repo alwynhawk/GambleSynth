@@ -248,6 +248,12 @@ private:
     std::atomic<float>* pReverb   = nullptr;
     std::atomic<float>* pDelayMix = nullptr;
 
+    // The host-request timer is started on the message thread, never in the
+    // constructor: hosts build plugins on background scanning threads, and a
+    // JUCE Timer needs the message thread to exist. This token lets the deferred
+    // start know whether the processor is still alive.
+    std::shared_ptr<bool> alive { std::make_shared<bool> (true) };
+
     // ROLL is a trigger, so what matters is the *edge*, not the level.
     bool  lastRollHigh = false;
     float lastSeenSeed = -1.0f;
