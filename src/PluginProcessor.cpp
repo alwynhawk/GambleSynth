@@ -553,15 +553,35 @@ void GambleSynthProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     juce::ScopedNoDenormals noDenormals;
     const int numSamples = buffer.getNumSamples();
 
+    // Recorded before any guard, so being turned away here is distinguishable
+    // from never being called.
+    diag.entries.fetch_add (1, std::memory_order_relaxed);
+    diag.inChannels.store (buffer.getNumChannels(), std::memory_order_relaxed);
+    diag.inSamples.store (numSamples, std::memory_order_relaxed);
+
     buffer.clear();
 
-    if (buffer.getNumChannels() == 0 || numSamples == 0)
+    if (buffer.getNumChannels() == 0)
+    {
+        diag.bailReason.store (1, std::memory_order_relaxed);
         return;
+    }
+
+    if (numSamples == 0)
+    {
+        diag.bailReason.store (2, std::memory_order_relaxed);
+        return;
+    }
 
     // Unprepared: emit silence rather than dividing by a zero sample rate deep in
     // the voices, which would spray NaN and get the track muted by some hosts.
     if (currentSampleRate <= 0.0 || osBuffer.getNumSamples() == 0)
+    {
+        diag.bailReason.store (3, std::memory_order_relaxed);
         return;
+    }
+
+    diag.bailReason.store (0, std::memory_order_relaxed);
 
     // A host may hand over a bigger block than it prepared for. Splitting keeps
     // every internal buffer within the size it was allocated at, without

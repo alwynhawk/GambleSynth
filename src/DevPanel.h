@@ -99,9 +99,18 @@ public:
                    + "   " + juce::String (d.sampleRate.load()) + " Hz"
                    + " / " + juce::String (d.blockSize.load())
                    + " / " + juce::String (d.channels.load()) + "ch");
-        lines.add ("blocks " + juce::String (blocks)
-                   + (blocksPerTick > 0 ? " (+" + juce::String (blocksPerTick) + "/tick)"
-                                        : " (STALLED)"));
+        const int entries = d.entries.load();
+        const int bail    = d.bailReason.load();
+
+        lines.add ("entered " + juce::String (entries)
+                   + "   ran " + juce::String (blocks)
+                   + (blocksPerTick > 0 ? "  (+" + juce::String (blocksPerTick) + "/tick)"
+                                        : "  (STALLED)"));
+        lines.add ("host gave " + juce::String (d.inChannels.load()) + "ch / "
+                   + juce::String (d.inSamples.load()) + " smp"
+                   + (bail == 1 ? "   BAIL: no channels"
+                    : bail == 2 ? "   BAIL: no samples"
+                    : bail == 3 ? "   BAIL: unprepared" : ""));
         lines.add ("notes in " + juce::String (d.notesIn.load())
                    + "   voices " + juce::String (d.voicesOn.load()));
         lines.add ("voice peak " + juce::String (vPeak, 4)
@@ -110,7 +119,10 @@ public:
         // Say what the numbers mean, so the reading is actionable.
         juce::String verdict;
         if (! d.prepared.load())          verdict = "never prepared";
-        else if (blocks == 0)             verdict = "processBlock NEVER called";
+        else if (entries == 0)            verdict = "processBlock NEVER called by host";
+        else if (bail == 1)               verdict = "host sends 0-channel buffers";
+        else if (bail == 2)               verdict = "host sends 0-length buffers";
+        else if (bail == 3)               verdict = "called before prepareToPlay";
         else if (blocksPerTick <= 0)      verdict = "processBlock stopped";
         else if (d.notesIn.load() == 0)   verdict = "no MIDI arriving";
         else if (d.voicesOn.load() == 0)  verdict = "notes arrive but no voice starts";
@@ -328,7 +340,7 @@ private:
 
     static constexpr int rowHeight = 20;
     static constexpr int headerH   = 20;
-    static constexpr int diagH     = 62;
+    static constexpr int diagH     = 74;
 
     void timerCallback() override
     {

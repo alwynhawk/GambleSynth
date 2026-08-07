@@ -86,7 +86,15 @@ public:
     // say *where* it went silent instead of being guessed at. ----
     struct Diagnostics
     {
-        std::atomic<int>   blocks     { 0 };   // processBlock calls
+        // Entered at the very top, before any guard. blocks counts the ones that
+        // got all the way through — a host that calls processBlock and gets
+        // turned away at a guard must not look identical to one that never
+        // calls it at all.
+        std::atomic<int>   entries    { 0 };
+        std::atomic<int>   bailReason { 0 };   // 0 none, 1 no channels, 2 no samples, 3 unprepared
+        std::atomic<int>   inChannels { 0 };   // what the host actually handed over
+        std::atomic<int>   inSamples  { 0 };
+        std::atomic<int>   blocks     { 0 };   // processBlock calls that ran fully
         std::atomic<int>   notesIn    { 0 };   // note-ons arriving
         std::atomic<int>   voicesOn   { 0 };   // voices sounding right now
         std::atomic<float> voicePeak  { 0.0f };// level straight out of the voices
