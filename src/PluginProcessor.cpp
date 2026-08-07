@@ -21,6 +21,11 @@ void GambleSynthProcessor::hostLog (const juce::String& what)
                  .getChildFile ("GambleSynth").getChildFile ("hostlog.txt");
     f.getParentDirectory().createDirectory();
 
+    // A log that only ever grows is a slow leak on someone else's machine. It
+    // exists to capture one bad session, so keeping the most recent is enough.
+    if (f.getSize() > 256 * 1024)
+        f.deleteFile();
+
     const auto line = juce::Time::getCurrentTime().toString (false, true, true, true)
                     + "  #" + juce::String (instanceId)
                     + "  thread " + juce::String::toHexString ((juce::int64) (juce::pointer_sized_int)
