@@ -56,7 +56,9 @@ private:
 // accent colour while the count matches every other readout on the cabinet.
 struct CreditsDisplay : juce::Component
 {
-    int credits = 0;
+    int   credits   = 0;
+    float fontScale = 0.42f;   // matches the button text height
+    bool  dimmed    = false;   // the price tag reads quieter than the balance
 
     void set (int c)
     {
@@ -67,7 +69,7 @@ struct CreditsDisplay : juce::Component
 
     void paint (juce::Graphics& g) override
     {
-        const auto font = Theme::mono (juce::jlimit (10.0f, 26.0f, getHeight() * 0.42f), true);
+        const auto font = Theme::mono (juce::jlimit (9.0f, 26.0f, getHeight() * fontScale), true);
         const juce::String number (credits);
 
         // Lay the number and the G out as one line, then split the space so the
@@ -80,8 +82,12 @@ struct CreditsDisplay : juce::Component
         auto r = getLocalBounds();
         auto line = r.withWidth (total).withCentre (r.getCentre());
 
-        Theme::drawOutlined (g, number, line.removeFromLeft (numW),
-                             juce::Justification::centred, font);
+        {
+            juce::Graphics::ScopedSaveState keep (g);
+            if (dimmed) g.setOpacity (0.75f);
+            Theme::drawOutlined (g, number, line.removeFromLeft (numW),
+                                 juce::Justification::centred, font);
+        }
         line.removeFromLeft (gapW);
 
         juce::GlyphArrangement ga;
@@ -94,7 +100,7 @@ struct CreditsDisplay : juce::Component
         g.strokePath (path, juce::PathStrokeType (juce::jmax (2.5f, font.getHeight() * 0.22f),
                                                   juce::PathStrokeType::curved,
                                                   juce::PathStrokeType::rounded));
-        g.setColour (Theme::gold());
+        g.setColour (Theme::gold().withAlpha (dimmed ? 0.8f : 1.0f));
         g.fillPath (path);
     }
 };
@@ -201,6 +207,7 @@ private:
     juce::TextButton nudgeButton;
     juce::TextButton shopButton;
     CreditsDisplay   creditsDisplay;
+    CreditsDisplay   costDisplay;
     juce::TextEditor seedEditor;
     FlatKeyboard keyboard;
 
@@ -223,6 +230,7 @@ private:
     std::unique_ptr<DevPanel> devPanel;
     bool devMode = false;
     int  lastShownSeed = -1;
+    int  lastShownSpin = -1;
     int  normalWidth  = 0;
     int  normalHeight = 400;
 

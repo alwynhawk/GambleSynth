@@ -99,6 +99,13 @@ public:
     // pulls and must not hand out jackpots.
     const FruitSpin& getFruitSpin() const { return fruitSpin; }
 
+    // Bumped only when the reels are actually spun, which is only on a pull.
+    // The editor animates on this rather than on the sound changing: a nudge,
+    // an undo or a loaded favourite all change the sound without touching the
+    // lottery, so spinning for them would animate three reels onto the symbols
+    // they were already showing.
+    int getSpinCount() const { return spinCount; }
+
     // Nudge: the same sound, played slightly differently. Costs a credit, which
     // is only ever won on the reels. Not a pull, so it never spins them.
     bool nudge();
@@ -232,6 +239,7 @@ private:
     int  lockMask = 0;
     FruitLottery fruitLottery;
     FruitSpin    fruitSpin;
+    int          spinCount = 0;
     NudgeBank    nudgeBank;
     int          lastPayout = 0;
     Diagnostics diag;

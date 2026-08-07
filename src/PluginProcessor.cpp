@@ -320,6 +320,7 @@ void GambleSynthProcessor::pullLever()
 {
     lastPullMs = juce::Time::getMillisecondCounter();
     fruitSpin  = fruitLottery.spin();
+    ++spinCount;
     lastPayout = nudgeBank.award (fruitSpin);
     commit (rollAudible());
 }
@@ -327,6 +328,7 @@ void GambleSynthProcessor::pullLever()
 void GambleSynthProcessor::rollSeed (unsigned seed)
 {
     fruitSpin  = fruitLottery.spin();
+    ++spinCount;
     lastPayout = nudgeBank.award (fruitSpin);
     const Patch p = withLocks (chaosMode ? randomizer.rollChaos (seed) : randomizer.roll (seed));
     randomizer.accept (p);

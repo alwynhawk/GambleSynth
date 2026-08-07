@@ -31,7 +31,8 @@ There's also a portable zip if you'd rather drop the `.vst3` in by hand.
 - **CHAOS** — takes the guard rails off. Most rolls are ugly, some are gold.
 - **SAVE / LOAD** — SAVE keeps the current sound; LOAD opens your saved list.
   Saved sounds live outside the project, so they're there in every session.
-- **NUDGE** — in the coin tray. Same sound, played slightly differently: the
+- **NUDGE** — in the coin tray, 1 G a press. Same sound, played slightly
+  differently: the
   filter shifts a little, envelopes drift, modulation wobbles. Structure stays
   put, so it's still recognisably the patch you had. Press again to drift
   further. Turns a near-miss roll into a keeper, and pairs with HOLD.

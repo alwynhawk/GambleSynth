@@ -79,8 +79,9 @@ namespace Skin
 
         // The coin tray holds what winnings buy. Button heights match the
         // SAVE/LOAD/CHAOS row above so the text is the same size as the rest.
-        juce::Rectangle<float> nudge   { px (282.0f, 1046.0f, 172.0f, 52.0f) };
-        juce::Rectangle<float> credits { px (462.0f, 1046.0f, 110.0f, 52.0f) };
+        juce::Rectangle<float> nudge   { px (280.0f, 1046.0f, 132.0f, 52.0f) };
+        juce::Rectangle<float> cost    { px (412.0f, 1046.0f,  52.0f, 52.0f) };
+        juce::Rectangle<float> credits { px (486.0f, 1046.0f,  88.0f, 52.0f) };
         juce::Rectangle<float> shop    { px (282.0f, 1104.0f, 290.0f, 50.0f) };
 
         // The band between the reels and the window.

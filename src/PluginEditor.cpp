@@ -41,6 +41,13 @@ GambleSynthEditor::GambleSynthEditor (GambleSynthProcessor& p)
 
     addAndMakeVisible (creditsDisplay);
 
+    // The price, sitting against the button so it reads as what a press costs
+    // rather than as a second balance.
+    costDisplay.set (1);
+    costDisplay.fontScale = 0.30f;
+    costDisplay.dimmed = true;
+    addAndMakeVisible (costDisplay);
+
     shopButton.setButtonText ("SHOP SOON");
     shopButton.setEnabled (false);          // nothing to sell yet
     addAndMakeVisible (shopButton);
@@ -130,6 +137,7 @@ GambleSynthEditor::GambleSynthEditor (GambleSynthProcessor& p)
     // seed it has never shown, and the reels and lever animate a roll that
     // already happened - in a DAW, every time the plugin window is opened.
     lastShownSeed = (int) proc.getPatch().seed;
+    lastShownSpin = proc.getSpinCount();
     refresh();
 
 
@@ -269,9 +277,10 @@ void GambleSynthEditor::refresh()
 
     // Spin the reels when the sound actually changed. The audio has already
     // switched — this is the flourish catching up, never a thing to wait for.
-    if (p.seed != lastShownSeed)
+    if (proc.getSpinCount() != lastShownSpin)
     {
-        lastShownSeed = p.seed;
+        lastShownSpin = proc.getSpinCount();
+        lastShownSeed = (int) p.seed;
         for (int k = 0; k < reels.size(); ++k)
             reels[k]->startSpin (k);
         if (lever != nullptr) lever->pull();
@@ -425,6 +434,7 @@ void GambleSynthEditor::layoutFromSkin (juce::Rectangle<int> art)
     auto at = [art] (juce::Rectangle<float> norm) { return Skin::place (norm, art); };
 
     nudgeButton.setBounds    (at (L.nudge));
+    costDisplay.setBounds    (at (L.cost));
     creditsDisplay.setBounds (at (L.credits));
     shopButton.setBounds     (at (L.shop));
     seedEditor.setBounds  (at (L.seedEntry));

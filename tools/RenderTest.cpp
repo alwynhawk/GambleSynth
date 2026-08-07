@@ -1523,6 +1523,7 @@ std::cout << "host lifecycle: " << (allOk ? "PASS" : "FAIL") << std::endl;
             const int before = pr.getNudgeCredits();
             const auto reelsBefore = pr.getFruitSpin();
             const unsigned seedBefore = pr.getPatch().seed;
+            const int spinsBefore = pr.getSpinCount();
 
             const bool did = pr.nudge();
             const bool costOne = pr.getNudgeCredits() == before - 1;
@@ -1531,15 +1532,21 @@ std::cout << "host lifecycle: " << (allOk ? "PASS" : "FAIL") << std::endl;
                                 && pr.getFruitSpin().symbol[2] == reelsBefore.symbol[2];
             const bool moved = pr.getPatch().seed != seedBefore;
 
+            // A nudge is not a pull, so the reels must not spin for it. They
+            // animate on the spin count, and the lottery only runs on a pull -
+            // spinning here would land three reels on the symbols they were
+            // already showing.
+            const bool reelsStill = (pr.getSpinCount() == spinsBefore);
+
             // And undo walks back to the sound before the nudge.
             pr.undo();
             const bool undone = pr.getPatch().seed == seedBefore;
 
-            const bool ok = did && costOne && sameReels && moved && undone;
+            const bool ok = did && costOne && sameReels && moved && undone && reelsStill;
             allOk = allOk && ok;
             std::cout << "processor nudge:     " << (ok ? "PASS" : "FAIL")
                       << "  cost " << (before - pr.getNudgeCredits() - 1 + 1)
-                      << ", reels still " << (sameReels ? "put" : "SPUN")
+                      << ", reels still " << ((sameReels && reelsStill) ? "put" : "SPUN")
                       << ", undo " << (undone ? "works" : "BROKEN") << std::endl;
         }
 
