@@ -19,6 +19,11 @@ Installed to:
 If your DAW doesn't list it, rescan plugins. It appears as **GambleSynth** by
 **HWCDealer**.
 
+**After updating, rescan.** DAWs cache what a plugin looks like, including its
+parameter list, and a cached scan that no longer matches the installed version
+can load silently or behave oddly. In FL Studio that's *right-click the plugin →
+Refresh plugin properties*, or Options → Manage plugins → Verify plugins.
+
 There's also a portable zip if you'd rather drop the `.vst3` in by hand.
 
 ## Using it
