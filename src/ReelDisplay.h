@@ -29,9 +29,15 @@ public:
         // Slow enough to watch, and staggered far enough apart that two
         // matching symbols land before the third does. A near miss is a quarter
         // of all pulls and only means anything if you get to see it coming.
-        stopAtMs = juce::Time::getMillisecondCounter() + 620 + reelIndex * 430;
+        startedAtMs = juce::Time::getMillisecondCounter();
+        stopAtMs    = startedAtMs + 620 + (juce::uint32) reelIndex * 430;
+        landedAtMs  = 0;
+
+        // How many symbols pass before it lands. Fixed per reel so the motion
+        // is a known distance over a known time rather than whatever the frame
+        // rate happened to deliver.
+        travelSteps = 11 + reelIndex * 5;
         startTimerHz (60);
-        landedAtMs = 0;
     }
 
     // Land immediately. Used for screenshots, where no message loop is running
@@ -74,16 +80,9 @@ private:
 
         if (spinning)
         {
-            // Decelerate into the stop rather than cutting: the last few
-            // symbols crawl past, which is what makes a reel feel mechanical.
-            const double left = (double) (int) (stopAtMs - now);
-            const float ease = (float) juce::jlimit (0.18, 1.0, left / 450.0);
-            scroll += 0.055f * ease;
-
             if (now >= stopAtMs)
             {
                 spinning = false;
-                scroll = 0.0f;
 
                 const auto& spin = proc.getFruitSpin();
                 landedAtMs = spin.isJackpot() ? now : 0;
@@ -107,25 +106,55 @@ private:
         repaint();
     }
 
-    // Fruit dropping through the window. Symbols are picked from a fixed
-    // rotation so the reel reads as one physical strip rather than random
-    // flashes, and the one that will land is already in place underneath.
+    // How far the strip has travelled, in symbols. Driven by the clock rather
+    // than accumulated per frame: a dropped frame then costs a smaller step
+    // instead of slowing the whole reel, which is what made this stutter.
+    float travelled() const
+    {
+        const auto now = juce::Time::getMillisecondCounter();
+        const float span = (float) (int) (stopAtMs - startedAtMs);
+        if (span <= 0.0f) return (float) travelSteps;
+
+        const float t = juce::jlimit (0.0f, 1.0f,
+                                      (float) (int) (now - startedAtMs) / span);
+
+        // Ease out on a cubic: fast at the top, crawling as it lands, and
+        // exactly travelSteps when it stops so the strip is aligned.
+        const float inv = 1.0f - t;
+        return (float) travelSteps * (1.0f - inv * inv * inv);
+    }
+
+    // Fruit falling through the window. Symbols come from a fixed rotation so
+    // the reel reads as one physical strip, and the rotation is offset so the
+    // symbol sitting in the window when it stops is the one it landed on -
+    // otherwise the last frame pops to a different fruit.
     void drawScrollingFruit (juce::Graphics& g, juce::Rectangle<float> r) const
     {
        #if GAMBLESYNTH_HAS_ASSETS
-        const float side = juce::jmin (r.getWidth(), r.getHeight()) * 0.86f;
-        const float step = r.getHeight() * 0.72f;
-        const float off  = std::fmod (scroll * r.getHeight(), step);
+        const int   n    = (int) Fruit::NumFruits;
+        // Spaced slightly further apart than they are tall, so the strip reads
+        // as separate symbols on a belt rather than fruit piled on fruit.
+        const float side = juce::jmin (r.getWidth(), r.getHeight()) * 0.82f;
+        const float step = r.getHeight() * 0.94f;
+
+        const float travel = travelled();
+        const int   base   = (int) std::floor (travel);
+        const float shift  = travel - (float) base;      // 0..1 between symbols
+
+        const int landing = (int) proc.getFruitSpin().symbol[(int) kind];
+        const int align   = ((landing - travelSteps) % n + n) % n;
 
         g.setColour (juce::Colours::white);
-        for (int i = -1; i <= 2; ++i)
+
+        // Drawn from above the window down through it, so fruit enters at the
+        // top and falls.
+        for (int k = -2; k <= 1; ++k)
         {
-            const int which = ((int) std::floor (scroll * r.getHeight() / step) + i
-                               + (int) kind * 2 + 600) % (int) Fruit::NumFruits;
+            const int which = ((align + base - k) % n + n) % n;
             const auto img = fruitImage ((Fruit) which);
             if (! img.isValid()) continue;
 
-            const float y = r.getCentreY() - off + (float) i * step;
+            const float y = r.getCentreY() + ((float) k + shift) * step;
             g.drawImage (img,
                          juce::Rectangle<float> (side, side).withCentre ({ r.getCentreX(), y }),
                          juce::RectanglePlacement::centred, false);
@@ -404,8 +433,9 @@ private:
     GambleSynthProcessor& proc;
     Kind  kind;
     bool  spinning   = false;
-    float scroll     = 0.0f;      // how far the strip has travelled
-    juce::uint32 stopAtMs   = 0;
+    juce::uint32 startedAtMs = 0;
+    juce::uint32 stopAtMs    = 0;
+    int   travelSteps = 12;       // symbols passing before it lands
     juce::uint32 landedAtMs = 0;  // non-zero while a win is flashing
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ReelDisplay)
