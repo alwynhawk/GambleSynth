@@ -59,6 +59,7 @@ struct CreditsDisplay : juce::Component
     int   credits   = 0;
     float fontScale = 0.42f;   // matches the button text height
     bool  dimmed    = false;   // the price tag reads quieter than the balance
+    bool  leftAlign = false;   // the price hugs the button it belongs to
 
     void set (int c)
     {
@@ -80,7 +81,8 @@ struct CreditsDisplay : juce::Component
         const int total = numW + gapW + gW;
 
         auto r = getLocalBounds();
-        auto line = r.withWidth (total).withCentre (r.getCentre());
+        auto line = leftAlign ? r.withWidth (total)
+                              : r.withWidth (total).withCentre (r.getCentre());
 
         {
             juce::Graphics::ScopedSaveState keep (g);

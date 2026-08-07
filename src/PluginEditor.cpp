@@ -46,6 +46,7 @@ GambleSynthEditor::GambleSynthEditor (GambleSynthProcessor& p)
     costDisplay.set (1);
     costDisplay.fontScale = 0.30f;
     costDisplay.dimmed = true;
+    costDisplay.leftAlign = true;
     addAndMakeVisible (costDisplay);
 
     shopButton.setButtonText ("SHOP SOON");
