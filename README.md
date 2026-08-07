@@ -108,6 +108,7 @@ build/RenderTest_artefacts/Release/RenderTest <mode>
 | `varietytest` | 40 pulls: no repeats, no duds, seeds still 1:1 |
 | `similaritytest` | how distinct consecutive rolls actually are |
 | `perftest` | worst-case CPU |
+| `cputest` | per-roll CPU, ranked, with what each patch has switched on |
 | `uishot` | renders the editor to PNG without a display |
 
 ### Roadmap

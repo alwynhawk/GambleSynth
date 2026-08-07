@@ -26,6 +26,61 @@ struct Oscillator
     }
     void syncReset() { phase[0] = 0.0f; }   // hard-sync: restart primary phase
 
+    // Chord intervals in semitones. Voice 0 is always the root, so a chord never
+    // moves the note you actually played.
+    static const int* chordIntervals (int type, int& count)
+    {
+        static const int fifth[]  = { 0, 7, 12 };
+        static const int octave[] = { 0, 12, 24 };
+        static const int major[]  = { 0, 4, 7, 12 };
+        static const int minor[]  = { 0, 3, 7, 12 };
+        static const int sus4[]   = { 0, 5, 7, 12 };
+
+        switch (type)
+        {
+            case 1: count = 3; return fifth;
+            case 2: count = 3; return octave;
+            case 3: count = 4; return major;
+            case 4: count = 4; return minor;
+            case 5: count = 4; return sus4;
+            default: count = 0; return nullptr;
+        }
+    }
+
+    // Advance the phases without generating anything. An oscillator turned all
+    // the way down still has to keep time — its level can be modulated back up,
+    // and the seed determines the phase, so skipping it outright would both
+    // click and change the sound. This costs a few adds instead of a polyBLEP
+    // or a wavetable read per unison voice.
+    void advance (float freq, double sampleRate, int voices, float detuneCents,
+                  int chordType = 0)
+    {
+        const float dt = (float) (freq / sampleRate);
+
+        int chordCount = 0;
+        const int* chord = chordIntervals (chordType, chordCount);
+        if (chord != nullptr)
+            voices = juce::jmin (MaxUni, chordCount);
+
+        voices = juce::jlimit (1, MaxUni, voices);
+
+        wrapped = false;
+        for (int v = 0; v < voices; ++v)
+        {
+            const float d = (voices > 1) ? ((float) v / (voices - 1) * 2.0f - 1.0f) : 0.0f;
+            const float ratio = (chord != nullptr)
+                ? std::exp2 ((float) chord[v] / 12.0f + d * detuneCents / 4800.0f)
+                : std::exp2 (d * detuneCents / 1200.0f);
+
+            phase[v] += dt * ratio;
+            if (phase[v] >= 1.0f)
+            {
+                phase[v] -= std::floor (phase[v]);
+                if (v == 0) wrapped = true;
+            }
+        }
+    }
+
     // pw = pulse width (0..1), only affects the square wave.
     static float waveAt (float p, float dt, int wave, float pw, juce::Random& rng,
                          const Wavetable* wt = nullptr, float wtPos = 0.0f)
@@ -65,26 +120,6 @@ struct Oscillator
 
     // Unison: `voices` detuned copies, panned around basePan by `spread`.
     // Accumulates equal-power into L/R (does not overwrite).
-    // Chord intervals in semitones. Voice 0 is always the root, so a chord never
-    // moves the note you actually played.
-    static const int* chordIntervals (int type, int& count)
-    {
-        static const int fifth[]  = { 0, 7, 12 };
-        static const int octave[] = { 0, 12, 24 };
-        static const int major[]  = { 0, 4, 7, 12 };
-        static const int minor[]  = { 0, 3, 7, 12 };
-        static const int sus4[]   = { 0, 5, 7, 12 };
-
-        switch (type)
-        {
-            case 1: count = 3; return fifth;
-            case 2: count = 3; return octave;
-            case 3: count = 4; return major;
-            case 4: count = 4; return minor;
-            case 5: count = 4; return sus4;
-            default: count = 0; return nullptr;
-        }
-    }
 
     void nextUnison (float freq, double sampleRate, int wave, juce::Random& rng,
                      int voices, float detuneCents, float basePan, float spread,

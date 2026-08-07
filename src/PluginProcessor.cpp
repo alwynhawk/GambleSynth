@@ -114,6 +114,7 @@ GambleSynthProcessor::GambleSynthProcessor()
 
     commit (rollAudible());      // start on a random sound
     active = patch;              // nothing is sounding yet, so no cut needed
+    applyVoiceBudget();
     patchDirty = false;
 
     hostLog ("constructed");
@@ -280,6 +281,28 @@ Patch GambleSynthProcessor::rollAudible()
 
     randomizer.accept (p);     // only what actually plays counts as "recent"
     return p;
+}
+
+// Roughly constant oscillator work per patch: 48 unison-voices' worth, floored
+// so even the widest patch keeps enough polyphony to play chords.
+void GambleSynthProcessor::applyVoiceBudget()
+{
+    int width = juce::jmax (1, active.unisonVoices);
+
+    // A chord replaces the detune spread with fixed intervals, so it sets the
+    // width instead of the unison count.
+    if (active.chordType > 0)
+        width = (active.chordType <= 2) ? 3 : 4;
+
+    // Only the normal oscillator mode runs unison at all; ring, sync and FM use
+    // a single voice per oscillator.
+    if (active.oscMode != 0)
+        width = 1;
+
+    voiceLimit = juce::jlimit (5, 16, 48 / width);
+
+    for (size_t k = 0; k < voicePtrs.size(); ++k)
+        voicePtrs[k]->setEnabled ((int) k < voiceLimit);
 }
 
 void GambleSynthProcessor::setChaos (bool shouldBeChaos)
@@ -496,6 +519,7 @@ bool GambleSynthProcessor::swapToNewPatch()
         return false;                  // message thread mid-write; retry next block
 
     active = patch;
+    applyVoiceBudget();
 
     for (auto* v : voicePtrs) v->hardReset();
     monoVoice->hardReset();
@@ -727,6 +751,7 @@ void GambleSynthProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
         {
             const int previousMode = active.voiceMode;
             active = patch;
+            applyVoiceBudget();          // live edits can change the unison width
             if (active.voiceMode != previousMode)
             {
                 for (auto* v : voicePtrs) v->hardReset();

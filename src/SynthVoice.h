@@ -16,8 +16,15 @@ public:
 
     bool canPlaySound (juce::SynthesiserSound* s) override
     {
-        return dynamic_cast<GambleSound*> (s) != nullptr;
+        // A disabled voice is one the synth will not hand a new note to, which
+        // is how polyphony is capped: wide unison multiplies every note by seven
+        // oscillators, so a patch like that gets fewer notes rather than the
+        // whole thing costing seven times as much. Voices already sounding are
+        // left to finish.
+        return enabled && dynamic_cast<GambleSound*> (s) != nullptr;
     }
+
+    void setEnabled (bool shouldBeEnabled) { enabled = shouldBeEnabled; }
 
     void setCurrentPlaybackSampleRate (double newRate) override
     {
@@ -330,10 +337,29 @@ public:
                 }
                 default: // normal: three detuned oscillators, each with unison + stereo spread
                 {
+                    // An oscillator turned all the way down costs as much as
+                    // one you can hear: three oscillators times seven unison
+                    // voices is 21 waveforms per sample whatever the levels are.
+                    // Silent ones only keep time, which is a few adds.
+                    constexpr float audible = 0.0005f;
+
                     float t0L = 0, t0R = 0, t1L = 0, t1R = 0, t2L = 0, t2R = 0;
-                    osc[0].nextUnison (f0, sr, patch.osc[0].wave, rng, uni, uniDetMod, basePan[0], 0.6f, pw, t0L, t0R, wtFor[0], wtPosSm, patch.chordType);
-                    osc[1].nextUnison (f1, sr, patch.osc[1].wave, rng, uni, uniDetMod, basePan[1], 0.6f, pw, t1L, t1R, wtFor[1], wtPosSm, patch.chordType);
-                    osc[2].nextUnison (f2, sr, patch.osc[2].wave, rng, uni, uniDetMod, basePan[2], 0.6f, pw, t2L, t2R, wtFor[2], wtPosSm, patch.chordType);
+
+                    if (lv0 > audible)
+                        osc[0].nextUnison (f0, sr, patch.osc[0].wave, rng, uni, uniDetMod, basePan[0], 0.6f, pw, t0L, t0R, wtFor[0], wtPosSm, patch.chordType);
+                    else
+                        osc[0].advance (f0, sr, uni, uniDetMod, patch.chordType);
+
+                    if (lv1 > audible)
+                        osc[1].nextUnison (f1, sr, patch.osc[1].wave, rng, uni, uniDetMod, basePan[1], 0.6f, pw, t1L, t1R, wtFor[1], wtPosSm, patch.chordType);
+                    else
+                        osc[1].advance (f1, sr, uni, uniDetMod, patch.chordType);
+
+                    if (lv2 > audible)
+                        osc[2].nextUnison (f2, sr, patch.osc[2].wave, rng, uni, uniDetMod, basePan[2], 0.6f, pw, t2L, t2R, wtFor[2], wtPosSm, patch.chordType);
+                    else
+                        osc[2].advance (f2, sr, uni, uniDetMod, patch.chordType);
+
                     sL = t0L * lv0 + t1L * lv1 + t2L * lv2;
                     sR = t0R * lv0 + t1R * lv1 + t2R * lv2;
                     break;
@@ -465,6 +491,7 @@ private:
     float level      = 1.0f;
     float lfoPhase   = 0.0f;
 
+    bool  enabled = true;    // false = capped out, takes no new notes
     float wtPosSm = 0.3f;    // slewed wavetable position
 
     // Fast fade-out state (voice stealing)

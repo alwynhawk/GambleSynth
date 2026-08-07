@@ -427,7 +427,48 @@ int main (int argc, char** argv)
                       << "  peak=" << juce::String (peak, 4) << std::endl;
         }
 
-        std::cout << "host lifecycle: " << (allOk ? "PASS" : "FAIL") << std::endl;
+                // Polyphony is capped by unison width, so a lush patch costs roughly what
+        // a plain one does instead of thirty times as much. Sixteen notes into a
+        // seven-voice unison patch must not start sixteen voices.
+        {
+            // The bus-layout checks above leave the processor in whatever
+            // configuration they finished with, so put it back to stereo first.
+            proc.setPlayConfigDetails (0, 2, sr, block);
+            proc.prepareToPlay (sr, block);
+
+            Patch wide = proc.getPatch();
+            wide.oscMode = 0; wide.chordType = 0; wide.voiceMode = 0;
+            wide.unisonVoices = 7;
+            wide.ampA = 0.005f; wide.ampS = 1.0f; wide.ampR = 0.5f;
+            proc.setPatch (wide);
+
+            // Let the roll cut finish first: it fades out, hard-resets every
+            // voice and fades back in, so notes sent during it are wiped.
+            juce::AudioBuffer<float> work (2, block);
+            for (int b = 0; b < 60; ++b)
+            { work.clear(); juce::MidiBuffer e; proc.processBlock (work, e); }
+
+            juce::MidiBuffer midi;
+            for (int n = 0; n < 16; ++n)
+                midi.addEvent (juce::MidiMessage::noteOn (1, 36 + n * 2, 0.9f), 0);
+
+            int peak = 0;
+            for (int b = 0; b < 40; ++b)
+            {
+                work.clear();
+                juce::MidiBuffer m = (b == 0) ? midi : juce::MidiBuffer();
+                proc.processBlock (work, m);
+                peak = juce::jmax (peak, proc.getDiagnostics().voicesOn.load());
+            }
+
+            // 48 / 7 = 6, and it must still make sound.
+            const bool ok = peak > 0 && peak <= 7;
+            allOk = allOk && ok;
+            std::cout << "unison caps polyphony: " << (ok ? "PASS" : "FAIL")
+                      << "  (16 notes -> " << peak << " voices)" << std::endl;
+        }
+
+std::cout << "host lifecycle: " << (allOk ? "PASS" : "FAIL") << std::endl;
         return allOk ? 0 : 1;
     }
 
@@ -1475,6 +1516,180 @@ int main (int argc, char** argv)
 
         std::cout << "nudge: " << (allOk ? "PASS" : "FAIL") << std::endl;
         return allOk ? 0 : 1;
+    }
+
+    // --- Per-roll CPU. The average is not the problem; the spikes are, and
+    //     they need naming before anything is optimised. ---
+    bool cpuTest = false;
+    for (int a = 1; a < argc; ++a) if (juce::String (argv[a]) == "cputest") cpuTest = true;
+    if (cpuTest)
+    {
+        GambleSynthProcessor pr;
+        pr.setPlayConfigDetails (0, 2, sr, block);
+        pr.prepareToPlay (sr, block);
+
+        struct Result { double pct; unsigned seed; juce::String why; };
+        std::vector<Result> results;
+
+        const int rolls = 60;
+        double total = 0.0, worst = 0.0;
+
+        for (int k = 0; k < rolls; ++k)
+        {
+            const unsigned seed = (unsigned) (1000 + k * 37);
+            pr.rollSeed (seed);
+            const auto& p = pr.getPatch();
+
+            juce::AudioBuffer<float> work (2, block);
+            juce::MidiBuffer midi;
+
+            // Warm up, then hold a full chord: worst case, not idle.
+            for (int b = 0; b < 4; ++b)
+            { work.clear(); juce::MidiBuffer e; pr.processBlock (work, e); }
+
+            for (int n = 0; n < 8; ++n)
+                midi.addEvent (juce::MidiMessage::noteOn (1, 48 + n * 3, 0.9f), 0);
+
+            const int blocks = (int) (sr * 2.0) / block;
+            const auto t0 = juce::Time::getHighResolutionTicks();
+            for (int b = 0; b < blocks; ++b)
+            {
+                work.clear();
+                juce::MidiBuffer m = (b == 0) ? midi : juce::MidiBuffer();
+                pr.processBlock (work, m);
+            }
+            const double secs = juce::Time::highResolutionTicksToSeconds (
+                                    juce::Time::getHighResolutionTicks() - t0);
+            const double audio = (double) (blocks * block) / sr;
+            const double pct = 100.0 * secs / audio;
+
+            // What this patch has switched on, so the cost has a cause.
+            juce::StringArray why;
+            if (p.unisonVoices > 1) why.add ("uni" + juce::String (p.unisonVoices));
+            if (p.pluckLevel > 0.001f) why.add ("pluck");
+            if (p.chordType > 0) why.add ("chord");
+            if (p.oscMode == 3) why.add ("fm");
+            if (p.oscMode == 2) why.add ("sync");
+            if (p.filterModel == 1 || p.filterModel == 2) why.add ("ladder");
+            if (p.filterModel == 3) why.add ("formant");
+            if (p.filterModel == 4) why.add ("comb");
+            if (p.filterPoles == 4) why.add ("4pole");
+            for (int m = 0; m < 3; ++m) if (p.osc[m].wave == 5) { why.add ("wt"); break; }
+            if (p.reverbMix > 0.01f) why.add ("verb");
+            if (p.delayMix > 0.01f) why.add ("delay");
+            if (p.phaserMix > 0.01f) why.add ("phase");
+            if (p.flangerMix > 0.01f) why.add ("flange");
+            if (p.chorusMix > 0.01f) why.add ("chorus");
+            if (p.drive > 0.01f) why.add ("drive");
+            if (p.foldAmount > 0.01f) why.add ("fold");
+            if (p.crushBits < 15.9f || p.crushRate < 0.99f) why.add ("crush");
+            if (p.compAmount > 0.01f) why.add ("comp");
+
+            results.push_back ({ pct, seed, why.joinIntoString (" ") });
+            total += pct;
+            worst = juce::jmax (worst, pct);
+        }
+
+        std::sort (results.begin(), results.end(),
+                   [] (const Result& a, const Result& b) { return a.pct > b.pct; });
+
+        std::cout << "8 held notes, " << (int) sr << " Hz / " << block
+                  << " smp, oversampling "
+                  << (pr.isOversampling() ? "on" : "off") << std::endl;
+        std::cout << "mean " << juce::String (total / rolls, 1) << "% of one core, worst "
+                  << juce::String (worst, 1) << "%" << std::endl << std::endl;
+
+        std::cout << "most expensive:" << std::endl;
+        for (int k = 0; k < 8 && k < (int) results.size(); ++k)
+            std::cout << "  " << juce::String (results[(size_t) k].pct, 1).paddedLeft (' ', 5)
+                      << "%  seed " << results[(size_t) k].seed
+                      << "  " << results[(size_t) k].why << std::endl;
+
+        // Where does the time go on the worst patch: the voices, or the effect
+        // chain that runs whatever the polyphony is?
+        {
+            auto costFor = [&] (unsigned seed, int notes)
+            {
+                pr.rollSeed (seed);
+                juce::AudioBuffer<float> work (2, block);
+                for (int b = 0; b < 4; ++b)
+                { work.clear(); juce::MidiBuffer e; pr.processBlock (work, e); }
+
+                juce::MidiBuffer midi;
+                for (int n = 0; n < notes; ++n)
+                    midi.addEvent (juce::MidiMessage::noteOn (1, 48 + n * 3, 0.9f), 0);
+
+                const int blocks = (int) (sr * 2.0) / block;
+                const auto t0 = juce::Time::getHighResolutionTicks();
+                for (int b = 0; b < blocks; ++b)
+                {
+                    work.clear();
+                    juce::MidiBuffer m = (b == 0) ? midi : juce::MidiBuffer();
+                    pr.processBlock (work, m);
+                }
+                const double secs = juce::Time::highResolutionTicksToSeconds (
+                                        juce::Time::getHighResolutionTicks() - t0);
+                return 100.0 * secs / ((double) (blocks * block) / sr);
+            };
+
+            const unsigned worstSeed = results.front().seed;
+            const double idle = costFor (worstSeed, 0);
+            const double one  = costFor (worstSeed, 1);
+            const double all  = costFor (worstSeed, 8);
+
+            std::cout << std::endl << "worst patch (seed " << worstSeed << ") breakdown:"
+                      << std::endl
+                      << "  no notes (fx only) " << juce::String (idle, 1) << "%" << std::endl
+                      << "  1 note             " << juce::String (one, 1) << "%" << std::endl
+                      << "  8 notes            " << juce::String (all, 1) << "%" << std::endl
+                      << "  -> per note        "
+                      << juce::String ((all - idle) / 8.0, 2) << "%" << std::endl;
+        }
+
+        // How many rolls actually need 2x? Oversampling exists for the stages
+        // that create aliasing at the source; a patch with none of them gains
+        // nothing from it and pays double.
+        {
+            int needs = 0;
+            juce::StringArray reasons;
+            for (int k = 0; k < rolls; ++k)
+            {
+                pr.rollSeed ((unsigned) (1000 + k * 37));
+                const auto& p = pr.getPatch();
+                const bool nonlinear = p.drive > 0.10f || p.foldAmount > 0.05f
+                                    || p.crushBits < 15.0f || p.crushRate < 0.95f
+                                    || p.oscMode != 0
+                                    || p.filterModel == 1 || p.filterModel == 2;
+                if (nonlinear) ++needs;
+            }
+            std::cout << std::endl << "need 2x anywhere: " << needs << "/" << rolls
+                      << "  (" << (100 * needs / rolls) << "%)" << std::endl;
+
+            // Narrower question: what aliases at the *voice*? Ring, sync and FM
+            // create it in the oscillator, and the ladder/diode filters saturate
+            // per voice. Drive, fold and crush are master stages - they need an
+            // oversampled path, but not an oversampled voice.
+            int voiceNeeds = 0;
+            for (int k = 0; k < rolls; ++k)
+            {
+                pr.rollSeed ((unsigned) (1000 + k * 37));
+                const auto& p = pr.getPatch();
+                if (p.oscMode != 0 || p.filterModel == 1 || p.filterModel == 2)
+                    ++voiceNeeds;
+            }
+            std::cout << "need 2x at the voice: " << voiceNeeds << "/" << rolls
+                      << "  (" << (100 * voiceNeeds / rolls) << "%)"
+                      << "  -> " << (rolls - voiceNeeds)
+                      << " could render voices at 1x" << std::endl;
+        }
+
+        std::cout << std::endl << "cheapest:" << std::endl;
+        for (int k = juce::jmax (0, (int) results.size() - 3); k < (int) results.size(); ++k)
+            std::cout << "  " << juce::String (results[(size_t) k].pct, 1).paddedLeft (' ', 5)
+                      << "%  seed " << results[(size_t) k].seed
+                      << "  " << results[(size_t) k].why << std::endl;
+
+        return 0;
     }
 
     // --- Worst-case CPU: 16 held notes, 7-voice unison each, whole FX rack on,

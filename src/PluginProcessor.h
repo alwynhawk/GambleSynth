@@ -186,6 +186,14 @@ private:
     void applyCut (float* L, float* R, int numSamples);
     void updateMeter (const float* L, const float* R, int numSamples);
     void applyDriveFold (float* L, float* R, int numSamples);   // the nonlinear pair
+    // Wide unison multiplies every note: three oscillators times seven unison
+    // voices is twenty-one waveforms per note per sample, and that is before
+    // oversampling doubles it. Rather than let a lush patch cost thirty times
+    // what a plain one does, the polyphony is capped so the total oscillator
+    // count stays in the same range whatever the patch.
+    void applyVoiceBudget();
+    int  voiceLimit = 16;
+
     void updateTempo();                  // read host BPM (cached; 120 with no host)
     void applyTempoSync();               // resolve note divisions against that BPM
     bool swapToNewPatch();               // false = message thread busy, retry next block

@@ -62,8 +62,13 @@ audibility before you hear them, and won't repeat the last two archetypes.
 
 **Possible, not decided**
 
-- Auto-bypass the oversampling for patches with no nonlinearity engaged. Worst-case CPU is
-  46% of one core; a clean patch gains nothing from 2x and could run at half that.
+- [x] CPU spikes. Worst case was 46% of one core against 1.2% for the cheapest roll - a 30x
+      spread. Measured rather than guessed: the cost is almost entirely per-note (the whole
+      effect chain is 0.5%), and wide unison multiplies every note by up to 21 oscillators.
+      Fixed by capping polyphony against unison width and by not generating oscillators that
+      are turned all the way down. 46% -> 18% at 16 held notes, sound unchanged.
+      Auto-bypassing oversampling was the plan here and turned out to be worthless: 95% of
+      rolls engage something nonlinear, and of the ones that do not, none are expensive.
 
 ## Declined
 
