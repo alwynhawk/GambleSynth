@@ -135,6 +135,15 @@ public:
         std::atomic<int>   blockSize  { 0 };
         std::atomic<int>   channels   { 0 };
         std::atomic<bool>  prepared   { false };
+
+        // What the host is actually feeding the published parameters. Master
+        // scales the output, so a host handing over zero silences the plugin
+        // with nothing on screen to say why.
+        std::atomic<float> pMasterVal { -1.0f };
+        std::atomic<float> pFilterVal { 0.0f };
+        std::atomic<float> pVerbVal   { 0.0f };
+        std::atomic<float> pDelayVal  { 0.0f };
+        std::atomic<int>   pChaosVal  { 0 };
     };
     const Diagnostics& getDiagnostics() const { return diag; }
 

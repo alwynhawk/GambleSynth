@@ -115,6 +115,11 @@ public:
                    + "   voices " + juce::String (d.voicesOn.load()));
         lines.add ("voice peak " + juce::String (vPeak, 4)
                    + "   out peak " + juce::String (oPeak, 4));
+        lines.add ("host: master " + juce::String (d.pMasterVal.load(), 2)
+                   + "  chaos " + juce::String (d.pChaosVal.load())
+                   + "  trims " + juce::String (d.pFilterVal.load(), 1)
+                   + "/" + juce::String (d.pVerbVal.load(), 1)
+                   + "/" + juce::String (d.pDelayVal.load(), 1));
 
         // Say what the numbers mean, so the reading is actionable.
         juce::String verdict;
@@ -127,6 +132,8 @@ public:
         else if (d.notesIn.load() == 0)   verdict = "no MIDI arriving";
         else if (d.voicesOn.load() == 0)  verdict = "notes arrive but no voice starts";
         else if (vPeak < 0.0001f)         verdict = "voices active but silent";
+        else if (oPeak < 0.0001f && d.pMasterVal.load() < 0.02f)
+                                          verdict = "host has Master at zero";
         else if (oPeak < 0.0001f)         verdict = "voices sound, FX chain kills it";
         else                              verdict = "signal present";
         lines.add ("-> " + verdict);
@@ -340,7 +347,7 @@ private:
 
     static constexpr int rowHeight = 20;
     static constexpr int headerH   = 20;
-    static constexpr int diagH     = 74;
+    static constexpr int diagH     = 86;
 
     void timerCallback() override
     {

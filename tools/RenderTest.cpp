@@ -1300,6 +1300,42 @@ std::cout << "host lifecycle: " << (allOk ? "PASS" : "FAIL") << std::endl;
                       << " vs bright " << juce::String (bright.second, 0) << std::endl;
         }
 
+        // 5b. A host that hands over a zero Master must not silence the plugin
+        //     with no way to tell. This is the one published parameter that can
+        //     turn the output off entirely.
+        {
+            pr.setChaos (false);
+            pr.rollSeed (4821);
+
+            auto levelAt = [&] (float normalisedMaster)
+            {
+                state.getParameter (ParamID::master)
+                     ->setValueNotifyingHost (normalisedMaster);
+
+                juce::AudioBuffer<float> work (2, block);
+                for (int b = 0; b < 6; ++b)
+                { work.clear(); juce::MidiBuffer e; pr.processBlock (work, e); }
+
+                float peak = 0.0f;
+                for (int b = 0; b < 90; ++b)
+                {
+                    work.clear();
+                    juce::MidiBuffer midi;
+                    if (b == 0) midi.addEvent (juce::MidiMessage::noteOn (1, 60, 0.9f), 0);
+                    pr.processBlock (work, midi);
+                    peak = juce::jmax (peak, work.getMagnitude (0, block));
+                }
+                return peak;
+            };
+
+            const float atZero = levelAt (0.0f);
+            const float atFull = levelAt (1.0f);
+            state.getParameter (ParamID::master)->setValueNotifyingHost (0.8f);
+
+            std::cout << "master 0 -> peak " << juce::String (atZero, 4)
+                      << ", master 1 -> peak " << juce::String (atFull, 4) << std::endl;
+        }
+
         // 6. Parameter state survives a save/load, which is how a host restores
         //    automation with the project.
         {

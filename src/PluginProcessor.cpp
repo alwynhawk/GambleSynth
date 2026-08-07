@@ -617,7 +617,16 @@ void GambleSynthProcessor::readHostParameters()
 
     // Trims scale what the roll produced rather than replacing it.
     if (pMaster != nullptr)
-        active.master = juce::jlimit (0.0f, 1.0f, patch.master * pMaster->load() / 0.8f);
+    {
+        const float m = pMaster->load();
+        diag.pMasterVal.store (m, std::memory_order_relaxed);
+        active.master = juce::jlimit (0.0f, 1.0f, patch.master * m / 0.8f);
+    }
+
+    if (pChaos  != nullptr) diag.pChaosVal.store (pChaos->load() > 0.5f ? 1 : 0, std::memory_order_relaxed);
+    if (pFilter != nullptr) diag.pFilterVal.store (pFilter->load(), std::memory_order_relaxed);
+    if (pReverb != nullptr) diag.pVerbVal.store (pReverb->load(), std::memory_order_relaxed);
+    if (pDelayMix != nullptr) diag.pDelayVal.store (pDelayMix->load(), std::memory_order_relaxed);
 
     if (pFilter != nullptr)
     {
