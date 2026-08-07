@@ -55,7 +55,7 @@ audibility before you hear them, and won't repeat the last two archetypes.
   every bar suits the concept.
 - macOS build, signing and notarisation. Windows builds on CI already.
 - Code signing for Windows, to stop the SmartScreen warning.
-- A pluginval pass.
+- [x] pluginval: passes at strictness 10 (max), runs in CI.
 - Preset browser for favourites: name, tag, delete.
 
 **Possible, not decided**

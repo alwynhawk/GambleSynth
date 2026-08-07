@@ -43,6 +43,19 @@ jobs:
             "$EXE" "$mode"
           done
 
+      # Steinberg-ecosystem host-compatibility validation. Covers what the
+      # in-house suite cannot: the VST3 wrapper itself, parameter thread safety,
+      # editor open/close cycles, and every sample rate and block size a host
+      # might pick. Strictness 10 is the maximum.
+      - name: pluginval
+        shell: pwsh
+        run: |
+          curl -L -o pluginval.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_Windows.zip
+          Expand-Archive pluginval.zip -DestinationPath pluginval
+          $vst3 = "build\GambleSynth_artefacts\Release\VST3\GambleSynth.vst3"
+          & .\pluginval\pluginval.exe --strictness-level 10 --validate $vst3
+          if ($LASTEXITCODE -ne 0) { throw "pluginval failed" }
+
       - name: Collect the build
         shell: bash
         run: |
