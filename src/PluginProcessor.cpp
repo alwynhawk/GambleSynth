@@ -284,13 +284,15 @@ Patch GambleSynthProcessor::rollAudible()
 
 void GambleSynthProcessor::pullLever()
 {
-    fruitSpin = fruitLottery.spin();
+    fruitSpin  = fruitLottery.spin();
+    lastPayout = nudgeBank.award (fruitSpin);
     commit (rollAudible());
 }
 
 void GambleSynthProcessor::rollSeed (unsigned seed)
 {
-    fruitSpin = fruitLottery.spin();
+    fruitSpin  = fruitLottery.spin();
+    lastPayout = nudgeBank.award (fruitSpin);
     const Patch p = withLocks (chaosMode ? randomizer.rollChaos (seed) : randomizer.roll (seed));
     randomizer.accept (p);
     commit (p);
@@ -325,6 +327,20 @@ void GambleSynthProcessor::applyLiveEdit (const Patch& p)
     }
     liveEditDirty = true;
     notifyChanged();
+}
+
+// A nudge is a variation on what is already loaded, so it goes through commit
+// and lands in history — undo walks back to the sound before it.
+bool GambleSynthProcessor::nudge()
+{
+    if (! nudgeBank.spend())
+        return false;
+
+    Patch p = patch;
+    randomizer.nudge (p);
+    commit (p);
+    notifyChanged();
+    return true;
 }
 
 void GambleSynthProcessor::saveFavourite()

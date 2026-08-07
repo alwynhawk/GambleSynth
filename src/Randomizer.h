@@ -47,6 +47,88 @@ public:
         }
     }
 
+    // Nudge: the same sound, played slightly differently. Only continuous values
+    // move, and only a little — every discrete choice (waveform, filter model,
+    // oscillator mode, archetype, arp) is what makes a patch *that* patch, so
+    // changing any of them would be a new roll rather than a variation.
+    //
+    // Amount is 0..1; at 1 the drift is obvious but the sound is still related.
+    void nudge (Patch& p, float amount = 0.5f)
+    {
+        const float a = juce::jlimit (0.0f, 1.0f, amount);
+
+        // Multiplicative for anything measured in Hz or seconds, so a 20 ms
+        // attack and a 2 s attack drift by the same *proportion* rather than the
+        // same absolute amount.
+        auto scale = [this, a] (float v, float spread)
+        {
+            return v * std::exp2 (f (-spread, spread) * a);
+        };
+        auto shift = [this, a] (float v, float spread, float lo, float hi)
+        {
+            return juce::jlimit (lo, hi, v + f (-spread, spread) * a);
+        };
+
+        p.cutoff    = juce::jlimit (30.0f, 18000.0f, scale (p.cutoff, 0.5f));
+        p.resonance = shift (p.resonance, 0.12f, 0.0f, 0.95f);
+        p.filterEnvAmt = shift (p.filterEnvAmt, 0.15f, -1.0f, 1.0f);
+        p.keytrack  = shift (p.keytrack, 0.1f, 0.0f, 1.0f);
+
+        p.ampA = juce::jlimit (0.001f, 4.0f, scale (p.ampA, 0.45f));
+        p.ampD = juce::jlimit (0.005f, 6.0f, scale (p.ampD, 0.45f));
+        p.ampS = shift (p.ampS, 0.12f, 0.0f, 1.0f);
+        p.ampR = juce::jlimit (0.01f, 8.0f, scale (p.ampR, 0.45f));
+
+        p.modA = juce::jlimit (0.001f, 4.0f, scale (p.modA, 0.45f));
+        p.modD = juce::jlimit (0.005f, 6.0f, scale (p.modD, 0.45f));
+        p.modS = shift (p.modS, 0.12f, 0.0f, 1.0f);
+        p.modR = juce::jlimit (0.01f, 8.0f, scale (p.modR, 0.45f));
+
+        for (auto& o : p.osc)
+        {
+            o.level = shift (o.level, 0.12f, 0.0f, 1.0f);
+            o.fine  = shift (o.fine, 6.0f, -50.0f, 50.0f);
+            o.decay = juce::jlimit (0.0f, 4.0f, o.decay * std::exp2 (f (-0.4f, 0.4f) * a));
+        }
+
+        p.unisonDetune = juce::jlimit (0.0f, 50.0f, scale (p.unisonDetune, 0.4f));
+        p.stereoWidth  = shift (p.stereoWidth, 0.15f, 0.0f, 1.0f);
+        p.fmAmount     = juce::jlimit (0.0f, 1.0f, scale (p.fmAmount, 0.35f));
+        p.subLevel     = shift (p.subLevel, 0.1f, 0.0f, 1.0f);
+        p.noiseLevel   = shift (p.noiseLevel, 0.08f, 0.0f, 1.0f);
+        p.wtPos        = shift (p.wtPos, 0.18f, 0.0f, 1.0f);
+
+        // Modulators: rate and depth drift, shape and destination do not.
+        for (int k = 0; k < Patch::NumMods; ++k)
+        {
+            auto& m = p.mod[k];
+            if (m.dest == ModNone) continue;
+            m.rate  = juce::jlimit (0.01f, 20.0f, scale (m.rate, 0.5f));
+            m.depth = shift (m.depth, 0.15f, 0.0f, 1.0f);
+        }
+        p.envAmount = shift (p.envAmount, 0.15f, -1.0f, 1.0f);
+
+        // Effects move least. A nudge that swings the reverb from dry to
+        // cathedral does not read as the same sound.
+        p.drive     = shift (p.drive, 0.12f, 0.0f, 1.0f);
+        p.foldAmount= shift (p.foldAmount, 0.1f, 0.0f, 1.0f);
+        p.chorusMix = shift (p.chorusMix, 0.08f, 0.0f, 1.0f);
+        p.phaserMix = shift (p.phaserMix, 0.08f, 0.0f, 1.0f);
+        p.flangerMix= shift (p.flangerMix, 0.08f, 0.0f, 1.0f);
+        p.delayMix  = shift (p.delayMix, 0.07f, 0.0f, 0.9f);
+        p.reverbMix = shift (p.reverbMix, 0.07f, 0.0f, 0.9f);
+
+        if (p.pluckLevel > 0.001f)
+        {
+            p.pluckDamping    = shift (p.pluckDamping, 0.12f, 0.0f, 1.0f);
+            p.pluckDecay      = shift (p.pluckDecay, 0.12f, 0.0f, 1.0f);
+            p.pluckBrightness = shift (p.pluckBrightness, 0.12f, 0.0f, 1.0f);
+        }
+
+        // The seed no longer describes this sound, so it stops claiming to.
+        p.seed = (unsigned) i (0, 999999);
+    }
+
 private:
     // How far a normal roll strays from its archetype's comfort zone. 1.0 was
     // the original tuning. Raising it widens every spread and makes every

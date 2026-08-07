@@ -31,6 +31,14 @@ GambleSynthEditor::GambleSynthEditor (GambleSynthProcessor& p)
     seedLabel.setJustificationType (juce::Justification::centredRight);
     addAndMakeVisible (seedLabel);
 
+    // The coin tray is where winnings land, so it holds the thing winnings buy.
+    addAndMakeVisible (nudgeButton);
+    nudgeButton.onClick = [this]
+    {
+        proc.nudge();
+        refresh();
+    };
+
     seedEditor.setInputRestrictions (6, "0123456789");
     seedEditor.setTextToShowWhenEmpty ("SEED", juce::Colours::black.withAlpha (0.45f));
     seedEditor.setJustification (juce::Justification::centred);
@@ -101,8 +109,9 @@ GambleSynthEditor::GambleSynthEditor (GambleSynthProcessor& p)
 
         for (auto* b : { &undoButton, &redoButton, &goButton })
             b->getProperties().set ("onLightPanel", true);
-        seedLabel.setColour (juce::Label::textColourId, Theme::gold());
-        seedLabel.setJustificationType (juce::Justification::centred);
+        // The seed already reads on the WINS strip; the tray gets the nudge.
+        seedLabel.setVisible (false);
+        nudgeButton.setLookAndFeel (&skinned);
     }
 
     proc.onPatchChanged = [this] { refresh(); };
@@ -251,6 +260,18 @@ void GambleSynthEditor::refresh()
         seedEditor.setText (juce::String (p.seed).paddedLeft ('0', 6),
                             juce::dontSendNotification);
 
+    {
+        const int credits = proc.getNudgeCredits();
+        nudgeButton.setButtonText (credits > 0 ? "NUDGE  " + juce::String (credits)
+                                               : "NUDGE  --");
+        nudgeButton.setEnabled (credits > 0);
+
+        // Say what a win paid, so the reels visibly decide something.
+        const int paid = proc.getLastPayout();
+        nudgeButton.setTooltip (paid > 0 ? "Won " + juce::String (paid) + " nudges"
+                                         : "Match 3 on the reels to win nudges");
+    }
+
     seedLabel.setText ("SEED " + juce::String (p.seed).paddedLeft ('0', 6)
                            + (proc.anyReelLocked() ? "*" : "")
                            + (p.chaos ? "  CHAOS" : "")
@@ -378,7 +399,7 @@ void GambleSynthEditor::layoutFromSkin (juce::Rectangle<int> art)
     const auto& L = Skin::layout();
     auto at = [art] (juce::Rectangle<float> norm) { return Skin::place (norm, art); };
 
-    seedLabel.setBounds   (at (L.seedDisplay));
+    nudgeButton.setBounds (at (L.seedDisplay));
     seedEditor.setBounds  (at (L.seedEntry));
     goButton.setBounds    (at (L.go));
     undoButton.setBounds  (at (L.undo));

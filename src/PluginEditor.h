@@ -149,6 +149,7 @@ private:
     juce::TextButton loadButton  { "LOAD" };
     juce::TextButton goButton    { "GO" };
     juce::Label      seedLabel;
+    juce::TextButton nudgeButton;
     juce::TextEditor seedEditor;
     FlatKeyboard keyboard;
 

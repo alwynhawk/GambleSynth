@@ -9,6 +9,7 @@
 #include "../src/Arp.h"
 #include "../src/Wavetables.h"
 #include "../src/Library.h"
+#include "../src/NudgeBank.h"
 
 int main (int argc, char** argv)
 {
@@ -18,6 +19,8 @@ int main (int argc, char** argv)
     // favourites, and they would otherwise pile up in the actual library.
     Library::testMode() = true;
     Library::file().deleteFile();
+    NudgeBank::testMode() = true;
+    NudgeBank::file().deleteFile();
 
     const double sr = 44100.0;
     const int    block = 512;
@@ -1245,6 +1248,201 @@ int main (int argc, char** argv)
         }
 
         std::cout << "host parameters: " << (allOk ? "PASS" : "FAIL") << std::endl;
+        return allOk ? 0 : 1;
+    }
+
+    // --- Nudge and the credits that buy it. The whole point is *close but not
+    //     the same*: a nudge that lands anywhere is just a re-roll, and one that
+    //     changes nothing is a wasted credit. ---
+    bool nudgeTest = false;
+    for (int a = 1; a < argc; ++a) if (juce::String (argv[a]) == "nudgetest") nudgeTest = true;
+    if (nudgeTest)
+    {
+        bool allOk = true;
+        Randomizer r;
+
+        // 1. Discrete choices must survive: a nudge is the same instrument.
+        {
+            bool held = true;
+            for (unsigned seed = 1; seed <= 60 && held; ++seed)
+            {
+                Patch base = r.roll (seed);
+                Patch n = base;
+                r.nudge (n);
+
+                for (int k = 0; k < 3; ++k)
+                    if (n.osc[k].wave != base.osc[k].wave
+                     || n.osc[k].semi != base.osc[k].semi) held = false;
+
+                if (n.filterModel != base.filterModel || n.filterType != base.filterType
+                 || n.filterPoles != base.filterPoles || n.oscMode != base.oscMode
+                 || n.voiceMode  != base.voiceMode  || n.arpMode != base.arpMode
+                 || n.chordType  != base.chordType  || n.wtTable != base.wtTable
+                 || n.archetypeName != base.archetypeName) held = false;
+
+                for (int k = 0; k < Patch::NumMods; ++k)
+                    if (n.mod[k].dest != base.mod[k].dest
+                     || n.mod[k].shape != base.mod[k].shape) held = false;
+            }
+
+            allOk = allOk && held;
+            std::cout << "structure survives:  " << (held ? "PASS" : "FAIL") << std::endl;
+        }
+
+        // 2. It has to actually change something, and stay in range.
+        {
+            int changed = 0, inRange = 0;
+            const int trials = 60;
+            for (unsigned seed = 1; seed <= (unsigned) trials; ++seed)
+            {
+                Patch base = r.roll (seed);
+                Patch n = base;
+                r.nudge (n);
+
+                if (std::abs (n.cutoff - base.cutoff) > 1.0f
+                 || std::abs (n.ampD - base.ampD) > 0.001f
+                 || std::abs (n.ampR - base.ampR) > 0.001f) ++changed;
+
+                const bool ok = n.cutoff >= 30.0f && n.cutoff <= 18000.0f
+                             && n.resonance >= 0.0f && n.resonance <= 0.95f
+                             && n.ampS >= 0.0f && n.ampS <= 1.0f
+                             && n.reverbMix >= 0.0f && n.reverbMix <= 0.9f
+                             && n.delayMix >= 0.0f && n.delayMix <= 0.9f;
+                if (ok) ++inRange;
+            }
+
+            const bool ok = (changed >= trials - 2) && (inRange == trials);
+            allOk = allOk && ok;
+            std::cout << "changes & in range:  " << (ok ? "PASS" : "FAIL")
+                      << "  changed " << changed << "/" << trials
+                      << ", in range " << inRange << "/" << trials << std::endl;
+        }
+
+        // 3. Close, not identical: the cutoff must stay within an octave or so,
+        //    otherwise it is a new sound rather than the same one again.
+        {
+            double worst = 0.0;
+            for (unsigned seed = 1; seed <= 60; ++seed)
+            {
+                Patch base = r.roll (seed);
+                Patch n = base;
+                r.nudge (n);
+                const double oct = std::abs (std::log2 (juce::jmax (1.0f, n.cutoff)
+                                                      / juce::jmax (1.0f, base.cutoff)));
+                worst = juce::jmax (worst, oct);
+            }
+
+            const bool ok = worst <= 1.0;
+            allOk = allOk && ok;
+            std::cout << "stays nearby:        " << (ok ? "PASS" : "FAIL")
+                      << "  worst cutoff move " << juce::String (worst, 2) << " oct" << std::endl;
+        }
+
+        // 4. Repeated nudges drift further — that is the point of pressing again.
+        {
+            Patch base = r.roll (4821);
+            Patch once = base;  r.nudge (once);
+            Patch many = base;
+            for (int k = 0; k < 6; ++k) r.nudge (many);
+
+            const double d1 = std::abs (std::log2 (juce::jmax (1.0f, once.cutoff)
+                                                 / juce::jmax (1.0f, base.cutoff)));
+            const double d6 = std::abs (std::log2 (juce::jmax (1.0f, many.cutoff)
+                                                 / juce::jmax (1.0f, base.cutoff)));
+
+            // Random walk, so not guaranteed per-seed; averaged over many seeds.
+            double sum1 = 0.0, sum6 = 0.0;
+            for (unsigned seed = 1; seed <= 80; ++seed)
+            {
+                Patch b = r.roll (seed);
+                Patch a1 = b; r.nudge (a1);
+                Patch a6 = b; for (int k = 0; k < 6; ++k) r.nudge (a6);
+                sum1 += std::abs (std::log2 (juce::jmax (1.0f, a1.cutoff) / juce::jmax (1.0f, b.cutoff)));
+                sum6 += std::abs (std::log2 (juce::jmax (1.0f, a6.cutoff) / juce::jmax (1.0f, b.cutoff)));
+            }
+
+            const bool ok = (sum6 > sum1);
+            allOk = allOk && ok;
+            std::cout << "repeats drift more:  " << (ok ? "PASS" : "FAIL")
+                      << "  mean 1x " << juce::String (sum1 / 80.0, 3)
+                      << " vs 6x " << juce::String (sum6 / 80.0, 3) << " oct"
+                      << "  (this seed " << juce::String (d1, 2)
+                      << " -> " << juce::String (d6, 2) << ")" << std::endl;
+        }
+
+        // 5. Credits: won on the reels, spent by nudging, and they persist.
+        {
+            NudgeBank::file().deleteFile();
+            {
+                NudgeBank bank;
+                const int start = bank.balance();
+
+                FruitSpin sevens;
+                sevens.symbol[0] = sevens.symbol[1] = sevens.symbol[2] = Fruit::Seven;
+                const int jack = bank.award (sevens);
+
+                FruitSpin fruit;
+                fruit.symbol[0] = fruit.symbol[1] = fruit.symbol[2] = Fruit::Cherry;
+                const int win = bank.award (fruit);
+
+                FruitSpin miss;
+                miss.symbol[0] = Fruit::Cherry; miss.symbol[1] = Fruit::Cherry;
+                miss.symbol[2] = Fruit::Lemon;
+                const int nothing = bank.award (miss);
+
+                const bool paid = jack == NudgeBank::JackpotPayout
+                               && win == NudgeBank::FruitPayout && nothing == 0
+                               && bank.balance() == start + jack + win;
+                allOk = allOk && paid;
+                std::cout << "payouts:             " << (paid ? "PASS" : "FAIL")
+                          << "  sevens " << jack << ", fruit " << win
+                          << ", near miss " << nothing << std::endl;
+            }
+
+            // Survives a restart, and cannot be spent below zero.
+            {
+                NudgeBank bank;
+                const int before = bank.balance();
+                int spent = 0;
+                while (bank.spend()) ++spent;
+
+                const bool ok = before > 0 && spent == before && bank.balance() == 0
+                             && ! bank.canSpend();
+                allOk = allOk && ok;
+                std::cout << "persist & spend:     " << (ok ? "PASS" : "FAIL")
+                          << "  reloaded " << before << ", spent " << spent << std::endl;
+            }
+        }
+
+        // 6. Through the processor: a nudge costs one and never spins the reels.
+        {
+            NudgeBank::file().deleteFile();
+            GambleSynthProcessor pr;
+
+            const int before = pr.getNudgeCredits();
+            const auto reelsBefore = pr.getFruitSpin();
+            const unsigned seedBefore = pr.getPatch().seed;
+
+            const bool did = pr.nudge();
+            const bool costOne = pr.getNudgeCredits() == before - 1;
+            const bool sameReels = pr.getFruitSpin().symbol[0] == reelsBefore.symbol[0]
+                                && pr.getFruitSpin().symbol[1] == reelsBefore.symbol[1]
+                                && pr.getFruitSpin().symbol[2] == reelsBefore.symbol[2];
+            const bool moved = pr.getPatch().seed != seedBefore;
+
+            // And undo walks back to the sound before the nudge.
+            pr.undo();
+            const bool undone = pr.getPatch().seed == seedBefore;
+
+            const bool ok = did && costOne && sameReels && moved && undone;
+            allOk = allOk && ok;
+            std::cout << "processor nudge:     " << (ok ? "PASS" : "FAIL")
+                      << "  cost " << (before - pr.getNudgeCredits() - 1 + 1)
+                      << ", reels still " << (sameReels ? "put" : "SPUN")
+                      << ", undo " << (undone ? "works" : "BROKEN") << std::endl;
+        }
+
+        std::cout << "nudge: " << (allOk ? "PASS" : "FAIL") << std::endl;
         return allOk ? 0 : 1;
     }
 

@@ -6,6 +6,7 @@
 #include "Fruit.h"
 #include "Arp.h"
 #include "Library.h"
+#include "NudgeBank.h"
 
 class GambleVoice; // defined in SynthVoice.h; held by unique_ptr for the mono path
 
@@ -80,6 +81,13 @@ public:
     // favourite change the sound, so the front glyphs follow, but they are not
     // pulls and must not hand out jackpots.
     const FruitSpin& getFruitSpin() const { return fruitSpin; }
+
+    // Nudge: the same sound, played slightly differently. Costs a credit, which
+    // is only ever won on the reels. Not a pull, so it never spins them.
+    bool nudge();
+    int  getNudgeCredits() const { return nudgeBank.balance(); }
+    int  getLastPayout() const { return lastPayout; }
+    NudgeBank& getNudgeBank() { return nudgeBank; }
 
     // ---- Live diagnostics, shown in dev mode. Everything here is written on
     // the audio thread and read on the message thread, so a silent plugin can
@@ -196,6 +204,8 @@ private:
     int  lockMask = 0;
     FruitLottery fruitLottery;
     FruitSpin    fruitSpin;
+    NudgeBank    nudgeBank;
+    int          lastPayout = 0;
     Diagnostics diag;
     std::atomic<float> meter[2] { { 0.0f }, { 0.0f } };
     std::atomic<bool>  clipped { false };

@@ -40,7 +40,9 @@ audibility before you hear them, and won't repeat the last two archetypes.
   source, filter character, motion, space) plus a compatibility matrix. Keys already works
   this way and it was the single biggest variety win so far.
 - Chaos intensity. A dial from tame to unhinged instead of a switch.
-- Nudge. Roll a slightly different version of the current sound.
+- [x] Nudge. A slightly different version of the current sound, bought with credits won on
+      the reels: 2 for three fruit, 20 for three sevens, 5 to start. Continuous values drift,
+      every discrete choice holds, so it stays the same instrument.
 
 **Interface**
 
