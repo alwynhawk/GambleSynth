@@ -130,7 +130,8 @@ struct MachineOverlay : juce::Component
     const juce::Image& image;
 };
 
-class GambleSynthEditor : public juce::AudioProcessorEditor
+class GambleSynthEditor : public juce::AudioProcessorEditor,
+                          private juce::Timer
 {
 public:
     explicit GambleSynthEditor (GambleSynthProcessor&);
@@ -169,6 +170,7 @@ private:
         }
     };
 
+    void timerCallback() override;   // re-enables the lever after the cooldown
     void refresh();          // sync labels / button states to the processor
     void applyTypedSeed();
 

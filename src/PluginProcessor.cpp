@@ -318,6 +318,7 @@ void GambleSynthProcessor::setChaos (bool shouldBeChaos)
 
 void GambleSynthProcessor::pullLever()
 {
+    lastPullMs = juce::Time::getMillisecondCounter();
     fruitSpin  = fruitLottery.spin();
     lastPayout = nudgeBank.award (fruitSpin);
     commit (rollAudible());

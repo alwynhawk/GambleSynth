@@ -24,9 +24,14 @@ public:
     // the sound has already changed, this is just the flourish catching up.
     void startSpin (int reelIndex)
     {
-        spinning   = true;
-        stopAtMs   = juce::Time::getMillisecondCounter() + 220 + reelIndex * 130;
-        startTimerHz (30);
+        spinning = true;
+
+        // Slow enough to watch, and staggered far enough apart that two
+        // matching symbols land before the third does. A near miss is a quarter
+        // of all pulls and only means anything if you get to see it coming.
+        stopAtMs = juce::Time::getMillisecondCounter() + 620 + reelIndex * 430;
+        startTimerHz (60);
+        landedAtMs = 0;
     }
 
     // Land immediately. Used for screenshots, where no message loop is running
@@ -38,40 +43,113 @@ public:
         repaint();
     }
 
+    bool isSpinning() const { return spinning; }
+
     void paint (juce::Graphics& g) override
     {
         // No background: the cabinet artwork carries its own reel backing, and
         // this component sits over it. Anything painted here would cover it.
         auto r = getLocalBounds().toFloat();
 
-        // A spinning reel is a blur of passing symbols, not a symbol.
+        // A spinning reel shows fruit dropping past the window, not an abstract
+        // blur — the symbols are the whole point of the mechanic.
         if (spinning)
         {
-            g.setColour (juce::Colours::white.withAlpha (0.5f));
-            const float band = r.getHeight() / 5.0f;
-            for (int i = -1; i < 6; ++i)
-            {
-                const float y = r.getY() + std::fmod (blurPhase + (float) i * band, r.getHeight() + band) - band;
-                g.fillRect (r.getX() + 6.0f, y, r.getWidth() - 12.0f, 2.0f);
-            }
+            drawScrollingFruit (g, r);
             return;
         }
 
         drawFruit (g, r);
+
+        // A win pulses for a moment after landing, brighter and longer for
+        // three sevens than for three of anything else.
+        if (landedAtMs > 0)
+            drawWinFlash (g, r);
     }
 
 private:
     void timerCallback() override
     {
-        blurPhase += 26.0f;
-        if (blurPhase > 10000.0f) blurPhase = 0.0f;
+        const auto now = juce::Time::getMillisecondCounter();
 
-        if (juce::Time::getMillisecondCounter() >= stopAtMs)
+        if (spinning)
         {
-            spinning = false;
+            // Decelerate into the stop rather than cutting: the last few
+            // symbols crawl past, which is what makes a reel feel mechanical.
+            const double left = (double) (int) (stopAtMs - now);
+            const float ease = (float) juce::jlimit (0.18, 1.0, left / 450.0);
+            scroll += 0.055f * ease;
+
+            if (now >= stopAtMs)
+            {
+                spinning = false;
+                scroll = 0.0f;
+
+                const auto& spin = proc.getFruitSpin();
+                landedAtMs = spin.isJackpot() ? now : 0;
+            }
+        }
+        else if (landedAtMs > 0)
+        {
+            const auto& spin = proc.getFruitSpin();
+            const juce::uint32 hold = (spin.symbol[0] == Fruit::Seven) ? 2000u : 900u;
+            if (now - landedAtMs > hold)
+            {
+                landedAtMs = 0;
+                stopTimer();
+            }
+        }
+        else
+        {
             stopTimer();
         }
+
         repaint();
+    }
+
+    // Fruit dropping through the window. Symbols are picked from a fixed
+    // rotation so the reel reads as one physical strip rather than random
+    // flashes, and the one that will land is already in place underneath.
+    void drawScrollingFruit (juce::Graphics& g, juce::Rectangle<float> r) const
+    {
+       #if GAMBLESYNTH_HAS_ASSETS
+        const float side = juce::jmin (r.getWidth(), r.getHeight()) * 0.86f;
+        const float step = r.getHeight() * 0.72f;
+        const float off  = std::fmod (scroll * r.getHeight(), step);
+
+        g.setColour (juce::Colours::white);
+        for (int i = -1; i <= 2; ++i)
+        {
+            const int which = ((int) std::floor (scroll * r.getHeight() / step) + i
+                               + (int) kind * 2 + 600) % (int) Fruit::NumFruits;
+            const auto img = fruitImage ((Fruit) which);
+            if (! img.isValid()) continue;
+
+            const float y = r.getCentreY() - off + (float) i * step;
+            g.drawImage (img,
+                         juce::Rectangle<float> (side, side).withCentre ({ r.getCentreX(), y }),
+                         juce::RectanglePlacement::centred, false);
+        }
+       #else
+        juce::ignoreUnused (g, r);
+       #endif
+    }
+
+    // Three of a kind: a bright frame that pulses. Sevens get gold and a longer
+    // run, so a jackpot never looks like an ordinary win.
+    void drawWinFlash (juce::Graphics& g, juce::Rectangle<float> r) const
+    {
+        const auto& spin = proc.getFruitSpin();
+        const bool sevens = (spin.symbol[0] == Fruit::Seven);
+        const auto elapsed = juce::Time::getMillisecondCounter() - landedAtMs;
+
+        const float speed = sevens ? 170.0f : 220.0f;
+        const float pulse = 0.5f + 0.5f * std::sin ((float) elapsed / speed);
+        const float fade  = sevens ? 1.0f : juce::jmax (0.0f, 1.0f - (float) elapsed / 900.0f);
+
+        g.setColour ((sevens ? Theme::gold() : juce::Colours::white)
+                         .withAlpha (0.85f * pulse * fade));
+        g.drawRect (r.reduced (2.0f), sevens ? 4.0f : 3.0f);
     }
 
     // Which symbol this reel is showing, derived from the sound itself.
@@ -326,8 +404,9 @@ private:
     GambleSynthProcessor& proc;
     Kind  kind;
     bool  spinning   = false;
-    float blurPhase  = 0.0f;
-    juce::uint32 stopAtMs = 0;
+    float scroll     = 0.0f;      // how far the strip has travelled
+    juce::uint32 stopAtMs   = 0;
+    juce::uint32 landedAtMs = 0;  // non-zero while a win is flashing
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ReelDisplay)
 };

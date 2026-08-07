@@ -10,7 +10,7 @@ GambleSynthEditor::GambleSynthEditor (GambleSynthProcessor& p)
 
     rollButton.setLookAndFeel (&bigLNF);
     addButton (rollButton);
-    rollButton.onClick = [this] { proc.pullLever(); };
+    rollButton.onClick = [this] { if (proc.canPull()) proc.pullLever(); };
 
     chaosButton.setClickingTogglesState (true);
     chaosButton.onClick = [this] { proc.setChaos (chaosButton.getToggleState()); };
@@ -122,6 +122,9 @@ GambleSynthEditor::GambleSynthEditor (GambleSynthProcessor& p)
     }
 
     proc.onPatchChanged = [this] { refresh(); };
+
+    // Re-enables the lever when the cooldown expires; nothing else needs it.
+    startTimerHz (10);
 
     // Opening the window is not a pull. Without this the first refresh sees a
     // seed it has never shown, and the reels and lever animate a roll that
@@ -248,6 +251,16 @@ void GambleSynthEditor::setDevMode (bool shouldBeOn)
 
     refresh();
     resized();
+}
+
+void GambleSynthEditor::timerCallback()
+{
+    const bool ready = proc.canPull();
+    if (ready != rollButton.isEnabled())
+    {
+        rollButton.setEnabled (ready);
+        if (lever != nullptr) lever->setEnabled (ready);
+    }
 }
 
 void GambleSynthEditor::refresh()

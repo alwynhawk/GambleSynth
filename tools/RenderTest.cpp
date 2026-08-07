@@ -1445,6 +1445,32 @@ std::cout << "host lifecycle: " << (allOk ? "PASS" : "FAIL") << std::endl;
                       << " -> " << juce::String (d6, 2) << ")" << std::endl;
         }
 
+        // 4b. The lever locks out while the reels land, but host automation is
+        //     exempt - a producer automating rolls on the bar is asking for
+        //     them, not watching a flourish.
+        {
+            NudgeBank::file().deleteFile();
+            GambleSynthProcessor pr;
+
+            pr.pullLever();
+            const bool lockedRightAfter = ! pr.canPull();
+            const int  remaining = pr.pullCooldownRemainingMs();
+
+            // Automation still gets through: the processor rolls on request
+            // regardless of what the lever is allowed to do.
+            const unsigned before = pr.getPatch().seed;
+            pr.pullLever();
+            const bool automationRolls = pr.getPatch().seed != before;
+
+            const bool ok = lockedRightAfter && remaining > 1000 && remaining <= 2000
+                         && automationRolls;
+            allOk = allOk && ok;
+            std::cout << "lever cooldown:      " << (ok ? "PASS" : "FAIL")
+                      << "  locked, " << remaining << " ms left"
+                      << ", automation " << (automationRolls ? "exempt" : "BLOCKED")
+                      << std::endl;
+        }
+
         // 5. Credits: won on the reels, spent by nudging, and they persist.
         {
             NudgeBank::file().deleteFile();

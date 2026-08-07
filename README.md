@@ -23,7 +23,10 @@ There's also a portable zip if you'd rather drop the `.vst3` in by hand.
 
 ## Using it
 
-- **The lever** — new random sound. That's the whole product.
+- **The lever** — new random sound. That's the whole product. The reels drop one
+  at a time and take about a second and a half to land, so the lever locks out
+  for two seconds while you watch. Three of a kind flashes; three sevens flash
+  gold and hold.
 - **Keyboard** — click it, or play a MIDI keyboard.
 - **CHAOS** — takes the guard rails off. Most rolls are ugly, some are gold.
 - **SAVE / LOAD** — SAVE keeps the current sound; LOAD opens your saved list.

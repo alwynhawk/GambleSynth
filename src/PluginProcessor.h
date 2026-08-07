@@ -61,6 +61,20 @@ public:
 
     // --- GambleSynth API ---
     void pullLever();                    // roll a new random sound (respects chaos)
+
+    // The reels take about a second and a half to land, and a near miss only
+    // means anything if you watch it happen. The lever locks out until the
+    // flourish is done. Host automation is deliberately exempt: a producer
+    // automating rolls on the bar is asking for them, not watching reels.
+    bool canPull() const
+    {
+        return juce::Time::getMillisecondCounter() - lastPullMs >= PullCooldownMs;
+    }
+    int pullCooldownRemainingMs() const
+    {
+        const auto since = (int) (juce::Time::getMillisecondCounter() - lastPullMs);
+        return juce::jmax (0, (int) PullCooldownMs - since);
+    }
     void rollSeed (unsigned seed);       // roll a specific seed
     // Goes through the host parameter, which is the single source of truth: the
     // audio thread reads that parameter every block, so setting the flag
@@ -210,6 +224,9 @@ private:
     std::atomic<bool> liveEditDirty { false };
     Cut   cutState = Cut::None;
     float cutGain  = 1.0f;
+
+    static constexpr juce::uint32 PullCooldownMs = 2000;
+    juce::uint32 lastPullMs = 0;
 
     bool chaosMode = false;
     int  lockMask = 0;
