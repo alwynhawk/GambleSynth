@@ -115,6 +115,11 @@ GambleSynthEditor::GambleSynthEditor (GambleSynthProcessor& p)
     }
 
     proc.onPatchChanged = [this] { refresh(); };
+
+    // Opening the window is not a pull. Without this the first refresh sees a
+    // seed it has never shown, and the reels and lever animate a roll that
+    // already happened - in a DAW, every time the plugin window is opened.
+    lastShownSeed = (int) proc.getPatch().seed;
     refresh();
 
 

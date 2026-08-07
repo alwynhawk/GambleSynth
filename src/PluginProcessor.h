@@ -62,7 +62,10 @@ public:
     // --- GambleSynth API ---
     void pullLever();                    // roll a new random sound (respects chaos)
     void rollSeed (unsigned seed);       // roll a specific seed
-    void setChaos (bool shouldBeChaos) { chaosMode = shouldBeChaos; }
+    // Goes through the host parameter, which is the single source of truth: the
+    // audio thread reads that parameter every block, so setting the flag
+    // directly would be overwritten before the next roll.
+    void setChaos (bool shouldBeChaos);
     bool isChaos() const { return chaosMode; }
 
     // Lockable reels — ROLL keeps the locked groups and re-rolls the rest.

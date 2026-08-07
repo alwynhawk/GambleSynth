@@ -1176,6 +1176,30 @@ int main (int argc, char** argv)
                       << "  (landed on " << pr.getPatch().seed << ")" << std::endl;
         }
 
+        // 3b. Chaos set from the UI must survive audio blocks and rolls. The
+        //     audio thread reads the host parameter every block, so a flag set
+        //     directly gets overwritten before the next pull - which is what
+        //     turned chaos off on every spin in a DAW.
+        {
+            pr.setChaos (true);
+            runBlocks (6);
+            const bool heldAfterAudio = pr.isChaos();
+
+            pr.pullLever();
+            runBlocks (6);
+            const bool heldAfterRoll = pr.isChaos();
+
+            pr.setChaos (false);
+            runBlocks (4);
+            const bool clears = ! pr.isChaos();
+
+            const bool ok = heldAfterAudio && heldAfterRoll && clears;
+            allOk = allOk && ok;
+            std::cout << "chaos survives a roll:" << (ok ? "PASS" : "FAIL")
+                      << "  after audio " << (heldAfterAudio ? "on" : "OFF")
+                      << ", after roll " << (heldAfterRoll ? "on" : "OFF") << std::endl;
+        }
+
         // 4. Chaos follows the parameter.
         {
             auto* chaos = state.getParameter (ParamID::chaos);
@@ -1192,6 +1216,13 @@ int main (int argc, char** argv)
 
         // 5. Trims audibly change the sound without silencing it.
         {
+            // On a known sound: the checks above roll the patch around, and a
+            // trim measured against whatever happened to be loaded is not a
+            // measurement of the trim.
+            pr.setChaos (false);
+            pr.rollSeed (4821);
+            runBlocks (4);
+
             auto measure = [&] (float trim)
             {
                 state.getParameter (ParamID::filter)

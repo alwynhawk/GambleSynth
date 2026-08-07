@@ -282,6 +282,17 @@ Patch GambleSynthProcessor::rollAudible()
     return p;
 }
 
+void GambleSynthProcessor::setChaos (bool shouldBeChaos)
+{
+    if (auto* param = apvts.getParameter (ParamID::chaos))
+    {
+        // notifying the host keeps automation lanes and the UI in step
+        param->setValueNotifyingHost (shouldBeChaos ? 1.0f : 0.0f);
+    }
+
+    chaosMode = shouldBeChaos;
+}
+
 void GambleSynthProcessor::pullLever()
 {
     fruitSpin  = fruitLottery.spin();
