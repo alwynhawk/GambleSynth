@@ -94,9 +94,11 @@ for that component.
 
 12. Law
 
-This agreement is governed by the laws of [YOUR COUNTRY OR STATE], and the
-courts there deal with any dispute. If you are a consumer, this doesn't take
-away your right to bring a claim where you live.
+This agreement is governed by the laws of the State of Washington, United
+States, without regard to its conflict of law rules. The state and federal
+courts located in King County, Washington deal with any dispute. If you are a
+consumer, this doesn't take away your right to bring a claim where you live, or
+the protection of the consumer law that applies there.
 
 13. The whole agreement
 
@@ -105,7 +107,7 @@ before. If a court finds part of it unenforceable, the rest still stands.
 
 14. Contact
 
-[YOUR SUPPORT EMAIL]
+alwynhawk@gmail.com
 
 ---
 

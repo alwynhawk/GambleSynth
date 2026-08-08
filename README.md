@@ -55,6 +55,8 @@ Roll triggers on the rising edge, so automating a spike every bar gives you a
 new sound every bar. The trims scale whatever the roll came up with instead of
 replacing it, which keeps them useful across every patch.
 
+Support and anything else: alwynhawk@gmail.com
+
 ## What I'd like to know
 
 Clicks, pops or dropouts, and which DAW, sample rate and buffer size. Rolls that
