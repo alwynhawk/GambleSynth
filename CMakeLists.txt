@@ -21,6 +21,9 @@ juce_add_plugin(GambleSynth
     NEEDS_MIDI_OUTPUT FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS TRUE    # the seed box needs typed input
     COPY_PLUGIN_AFTER_BUILD FALSE
+    # Lives outside assets/ on purpose: everything in there is globbed into
+    # BinaryData for the cabinet skin, and the icon is not part of the artwork.
+    ICON_BIG   "${CMAKE_CURRENT_SOURCE_DIR}/icon/gamblesynth.png"
     FORMATS        Standalone VST3
     PLUGIN_MANUFACTURER_CODE Hwcd       # 4 chars, first one uppercase
     PLUGIN_CODE    Gsyn

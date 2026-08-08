@@ -36,6 +36,8 @@ PrivilegesRequired=admin
 ArchitecturesInstallIn64BitMode=x64compatible
 ArchitecturesAllowed=x64compatible
 UninstallDisplayName={#AppName} {#AppVersion}
+SetupIconFile=..\icon\gamblesynth.ico
+UninstallDisplayIcon={app}\{#AppExeName}
 ; Upgrading in place. Without these, Inno recognises the existing install by
 ; AppId and refuses rather than replacing it — every update would mean
 ; uninstalling by hand first.
