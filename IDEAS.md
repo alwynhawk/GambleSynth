@@ -65,6 +65,9 @@ audibility before you hear them, and won't repeat the last two archetypes.
 
 **Before charging for it**
 
+- [x] JUCE 9. The VST3 SDK it bundles is MIT-licensed; the one in JUCE 8 was proprietary
+      Steinberg/GPLv3 and required a signed agreement from Steinberg before publishing.
+
 - Host parameters. The plugin currently publishes none, so nothing is automatable or
   MIDI-learnable. Master, chaos and a roll trigger at minimum — automating the roll to fire
   every bar suits the concept.

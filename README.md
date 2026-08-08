@@ -73,7 +73,7 @@ Build:
 cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j16
 ```
 
-CMake fetches JUCE 8.0.4. The targets are the standalone, the VST3, and
+CMake fetches JUCE 9.0.0. The targets are the standalone, the VST3, and
 `RenderTest`, which is both the test suite and a way to audition rolls without
 opening a DAW. Windows builds and the installer come from CI — see
 `.github/workflows/build-windows.yml` and `installer/GambleSynth.iss`. The
@@ -112,6 +112,7 @@ Run with no arguments, or a number, to render that many rolls to a wav.
 The roadmap is in `IDEAS.md`. Licence terms are in `LICENSE.txt` and the
 attributions in `THIRD-PARTY.txt`; both ship with the installer.
 
-Two upstream obligations before selling: JUCE 8 is dual-licensed AGPLv3 or
-commercial, so a commercial licence is required to ship this closed-source, and
-Steinberg require a signed VST3 licence agreement before a VST3 is published.
+One upstream obligation before selling: JUCE is dual-licensed AGPLv3 or
+commercial, so shipping this closed-source needs a commercial JUCE licence. The
+VST3 SDK bundled with JUCE 9 is MIT, which needs no agreement — the older SDK in
+JUCE 8 did, which is the main reason this project is on 9.

@@ -5,7 +5,7 @@ filters, envelopes, effects and the randomiser are our own code. What follows is
 everything else the software is built on.
 
 --------------------------------------------------------------------------------
-JUCE 8
+JUCE 9
 --------------------------------------------------------------------------------
 
 Application framework: audio device handling, plugin wrappers, user interface,
@@ -16,7 +16,7 @@ Copyright (c) Raw Material Software Limited.
 The JUCE framework modules are dual-licensed under the AGPLv3 and the commercial
 JUCE licence. GambleSynth is distributed under the commercial JUCE licence.
 
-  https://juce.com/legal/juce-8-licence/
+  https://juce.com/legal/juce-9-licence/
 
 JUCE is provided "as is" without any warranty, and all warranties, whether
 expressed or implied, including warranty of merchantability or fitness for a
@@ -29,11 +29,13 @@ VST3 SDK
 VST is a trademark of Steinberg Media Technologies GmbH, registered in Europe
 and other countries.
 
-Copyright (c) 2024 Steinberg Media Technologies GmbH. All rights reserved.
+Copyright (c) 2025 Steinberg Media Technologies GmbH.
 
-Used under the Steinberg VST3 licence.
+The VST3 SDK is used under the MIT licence. The trademark is separate from the
+code licence: "VST" is not used in this product's name, and this notice is the
+attribution Steinberg's usage guidelines ask for.
 
-  https://www.steinberg.net/en/company/developers.html
+  MIT licence text: see the VST3 SDK in the JUCE distribution.
 
 --------------------------------------------------------------------------------
 Components within JUCE
