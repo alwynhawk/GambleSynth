@@ -28,6 +28,24 @@ public:
     }
 
     Patch roll (unsigned seed)     { return rollNormal (seed); }
+
+    // Force a particular archetype. Only for measurement: asking how varied one
+    // archetype is means holding it fixed, and filtering rolls by name gives a
+    // different sample every time anything upstream shifts the random stream.
+    Patch rollAs (unsigned seed, int archetype) { return rollNormal (seed, archetype); }
+
+    static const char* archetypeName (int index)
+    {
+        switch (index)
+        {
+            case Pad:   return "Pad";    case Pluck: return "Pluck";
+            case Bass:  return "Bass";   case Lead:  return "Lead";
+            case Bell:  return "Bell";   case Stab:  return "Stab";
+            case Keys:  return "Keys";   case Organ: return "Organ";
+            case Drone: return "Drone";  case Vox:   return "Vox";
+            case Perc:  return "Perc";   default:    return "Brass";
+        }
+    }
     Patch rollChaos()              { return rollChaosSeed (nextSeed()); }
     Patch rollChaos (unsigned seed){ return rollChaosSeed (seed); }
 
@@ -162,10 +180,11 @@ private:
     std::mt19937 seedGen { std::random_device{}() };    // picks fresh seeds
     unsigned nextSeed() { return seedGen() % 1000000u; } // 6-digit, easy to share
 
-    Patch rollNormal (unsigned seed)
+    Patch rollNormal (unsigned seed, int forceArchetype = -1)
     {
         rng.seed (seed);
-        const int archetype = (int) (rng() % (unsigned) NumArchetypes);
+        const int rolled = (int) (rng() % (unsigned) NumArchetypes);
+        const int archetype = (forceArchetype >= 0) ? forceArchetype : rolled;
 
         Patch p;
         setThreeOsc (p, 2, 2, 0);           // sane default
@@ -848,25 +867,57 @@ private:
     // ---- archetypes -------------------------------------------------------
     void makePad (Patch& p)
     {
-        setThreeOsc (p, 2, 2, chance (0.5f) ? 1 : 2);
+        // Every pad used to be saw against saw, which fixed the timbre before
+        // any of the ranges below got a say. A pad wants harmonics to detune
+        // against each other, and square and triangle do that too.
+        {
+            const int lead = chance (0.55f) ? 2 : (chance (0.6f) ? 3 : 1);
+            const int pair = chance (0.5f) ? lead : (chance (0.5f) ? 2 : 3);
+            setThreeOsc (p, lead, pair, chance (0.5f) ? 1 : 2);
+        }
         p.osc[2].semi = chance (0.5f) ? 12 : -12;
-        p.ampA = f (0.4f, 1.4f); p.ampD = f (0.3f, 0.8f); p.ampS = f (0.7f, 0.95f); p.ampR = f (0.6f, 2.0f);
-        p.filterType = 0;
-        p.cutoff = f (500.f, 2500.f);
-        p.filterEnvAmt = f (0.1f, 0.5f);
-        p.modA = f (0.4f, 1.2f); p.modD = f (0.5f, 1.5f); p.modS = f (0.4f, 0.8f);
-        motion (p, ModCutoff, f (0.1f, 1.5f), f (0.1f, 0.4f));
-        p.reverbSize = f (0.6f, 0.9f); p.reverbMix = f (0.3f, 0.5f);
-        p.delayMix = chance (0.4f) ? f (0.1f, 0.25f) : 0.0f; p.delayTime = f (0.3f, 0.6f); p.delayFb = f (0.2f, 0.4f);
-        p.stereoWidth = f (0.7f, 0.95f); p.chorusMix = f (0.35f, 0.6f);      // wide & lush
+
+        // Pads measured tightest of all (0.372 against 0.504 across the engine),
+        // and the reason was the space rather than the tone: every one of them
+        // was wide, chorused, reverbed and slow. What makes a pad a pad is that
+        // it sustains and does not attack — so the envelope stays soft and the
+        // sustain stays high, and everything else gets to vary.
+        p.ampA = f (0.15f, 2.2f); p.ampD = f (0.2f, 1.6f);
+        p.ampS = f (0.55f, 0.98f); p.ampR = f (0.4f, 3.0f);
+        p.filterType = chance (0.18f) ? (chance (0.5f) ? 1 : 2) : 0;
+        p.cutoff = f (250.f, 6000.f);
+        p.filterEnvAmt = f (-0.3f, 0.8f);
+        p.modA = f (0.2f, 2.0f); p.modD = f (0.3f, 2.5f); p.modS = f (0.2f, 0.9f);
+
+        // Usually a slow filter sweep, sometimes something else doing the
+        // moving — a pad that breathes on its level or detune is still a pad.
+        {
+            const float r = f (0.0f, 1.0f);
+            if      (r < 0.55f) motion (p, ModCutoff, f (0.05f, 1.8f), f (0.1f, 0.6f));
+            else if (r < 0.75f) motion (p, ModAmp,    f (0.08f, 0.9f), f (0.1f, 0.4f));
+            else if (r < 0.9f)  motion (p, ModDetune, f (0.05f, 0.6f), f (0.15f, 0.6f));
+            else                motion (p, ModPulseWidth, f (0.08f, 1.2f), f (0.2f, 0.7f));
+        }
+
+        // Dry pads exist and are a different instrument from washed ones.
+        p.reverbSize = f (0.3f, 0.95f);
+        p.reverbMix  = chance (0.2f) ? f (0.0f, 0.15f) : f (0.25f, 0.6f);
+        p.delayMix = chance (0.4f) ? f (0.08f, 0.4f) : 0.0f;
+        p.delayTime = f (0.2f, 0.7f); p.delayFb = f (0.15f, 0.55f);
+        p.stereoWidth = f (0.35f, 0.98f);
+        p.chorusMix   = chance (0.25f) ? f (0.0f, 0.15f) : f (0.25f, 0.7f);
         if (chance (0.35f)) { p.oscMode = 1; p.fmAmount = f (0.2f, 0.5f); }  // slow ring shimmer
-        p.unisonVoices = chance (0.5f) ? 5 : 7; p.unisonDetune = f (8.0f, 22.0f);
-        p.subLevel = f (0.0f, 0.2f); p.noiseLevel = f (0.0f, 0.05f);
-        p.pulseWidth = f (0.3f, 0.7f); p.pwmDepth = f (0.05f, 0.35f);
-        p.velToAmp = f (0.15f, 0.45f); p.velToFilter = f (0.2f, 0.5f);
-        pickFilter (p, 0.20f, 0.0f, 0.18f, 0.0f);
-        p.drive = f (0.0f, 0.15f); p.compAmount = f (0.0f, 0.25f);
-        pickFx (p, 0.28f, 0.12f, 0.0f, 0.05f);   // vowel pads are a highlight
+
+        // Narrow unison is a thinner, colder pad rather than a lush one, and it
+        // costs a great deal less to play.
+        p.unisonVoices = chance (0.3f) ? i (2, 4) : (chance (0.5f) ? 5 : 7);
+        p.unisonDetune = f (4.0f, 30.0f);
+        p.subLevel = f (0.0f, 0.35f); p.noiseLevel = chance (0.25f) ? f (0.02f, 0.14f) : f (0.0f, 0.05f);
+        p.pulseWidth = f (0.2f, 0.8f); p.pwmDepth = f (0.0f, 0.6f);
+        p.velToAmp = f (0.1f, 0.6f); p.velToFilter = f (0.1f, 0.7f);
+        pickFilter (p, 0.20f, 0.06f, 0.18f, 0.08f);
+        p.drive = f (0.0f, 0.4f); p.compAmount = f (0.0f, 0.4f);
+        pickFx (p, 0.28f, 0.16f, 0.05f, 0.1f);   // vowel pads are a highlight
     }
 
     void makePluck (Patch& p)

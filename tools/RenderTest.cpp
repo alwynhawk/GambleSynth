@@ -158,13 +158,28 @@ int main (int argc, char** argv)
         std::vector<Print> prints;
         juce::StringArray structures;
 
+        // With an archetype named, force it on a fixed run of seeds rather than
+        // rolling until enough happen to land on it. Filtering samples whichever
+        // seeds currently map to that archetype, and any change anywhere in the
+        // randomizer shifts that mapping - so two filtered runs measure two
+        // different sets of patches and cannot be compared.
+        int forced = -1;
+        if (wantArchetype.isNotEmpty())
+            for (int a = 0; a < Randomizer::NumArchetypes; ++a)
+                if (wantArchetype.equalsIgnoreCase (Randomizer::archetypeName (a)))
+                    forced = a;
+
+        if (wantArchetype.isNotEmpty() && forced < 0)
+        {
+            std::cout << "unknown archetype: " << wantArchetype << std::endl;
+            return 1;
+        }
+
         const int wanted = 24;
         for (unsigned seed = 1; (int) prints.size() < wanted && seed < 4000; ++seed)
         {
-            proc.rollSeed (seed);
-            if (wantArchetype.isNotEmpty()
-                && ! proc.getPatch().archetypeName.equalsIgnoreCase (wantArchetype))
-                continue;
+            if (forced >= 0) proc.setPatchAs (seed, forced);
+            else             proc.rollSeed (seed);
 
             const auto& pat = proc.getPatch();
             const juce::String label = pat.archetypeName

@@ -180,6 +180,14 @@ public:
     // Dev panel (seed 777): apply an edited patch immediately, with no roll cut
     // and no history entry — dragging a slider must not mute or spam undo.
     void applyLiveEdit (const Patch& p);
+
+    // Measurement only: load a specific archetype at a specific seed, so how
+    // varied one archetype is can be asked directly instead of inferred from
+    // whichever rolls happened to land on it.
+    void setPatchAs (unsigned seed, int archetype)
+    {
+        commit (randomizer.rollAs (seed, archetype));
+    }
     juce::MidiKeyboardState keyboardState;
 
     // Notifies the editor to refresh its labels/buttons after a state change.

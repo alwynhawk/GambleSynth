@@ -34,12 +34,19 @@ audibility before you hear them, and won't repeat the last two archetypes.
 
 **Sound**
 
+- Loosen Vox, Drone, Brass and Stab. Measured tightest now (0.407, 0.407, 0.413, 0.416
+  against 0.534 across the engine) once the per-archetype measurement was fixed to force an
+  archetype instead of filtering rolls by name.
+
 - Rarity tiers. Weight rolls common / rare / jackpot and show it on the pull. Ties variety to
   the theme and gives people something worth screenshotting.
 - [x] Cross-archetype borrowing. 12% of rolls build a second archetype and transplant one
       of the five HOLD sections from it — a bell's envelope on a bass, an organ's effects on
       a pluck. Weighted away from the oscillators, since borrowing those replaces what the
       sound is made of rather than colouring it.
+- [x] Loosen Pad. Every pad was saw against saw, wide, chorused and reverbed - the space and
+      the timbre were fixed before any range got a say. Waveforms now vary, dry pads exist,
+      unison can be narrow, and the slow filter sweep is sometimes something else moving.
 - [x] Loosen Bass and Lead. They measured 0.387 and 0.430 mean spectral distance against
       0.504 across the whole engine, i.e. two Bass rolls were more alike than two rolls
       picked at random. Now 0.454 and 0.506.
