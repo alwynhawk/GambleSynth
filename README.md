@@ -4,123 +4,103 @@ Pull the lever, get a synth patch.
 
 ## Installing
 
-Run **GambleSynth-x.y.z-Windows.exe** and pick what you want: the VST3 for your
-DAW, the standalone app, or both. Installing over an older version replaces it —
-no need to uninstall first.
+Run the installer and pick what you want: the VST3, the standalone, or both.
+Installing over an older version replaces it.
 
-The build isn't code-signed yet, so Windows shows a "protected your PC" box on
-first run. Click *More info* then *Run anyway*.
+It isn't code-signed yet, so Windows will put up a "protected your PC" box the
+first time. Click More info, then Run anyway.
 
-Installed to:
+The VST3 goes to `C:\Program Files\Common Files\VST3` and the standalone to
+`C:\Program Files\HWCDealer\GambleSynth`. If your DAW doesn't list it, rescan.
+It shows up as GambleSynth by HWCDealer.
 
-- VST3 — `C:\Program Files\Common Files\VST3\GambleSynth.vst3`
-- Standalone — `C:\Program Files\HWCDealer\GambleSynth\`
-
-If your DAW doesn't list it, rescan plugins. It appears as **GambleSynth** by
-**HWCDealer**.
-
-**After updating, rescan.** DAWs cache what a plugin looks like, including its
-parameter list, and a cached scan that no longer matches the installed version
-can load silently or behave oddly. In FL Studio that's *right-click the plugin →
-Refresh plugin properties*, or Options → Manage plugins → Verify plugins.
-
-There's also a portable zip if you'd rather drop the `.vst3` in by hand.
+Rescan after updating too. DAWs remember what a plugin looked like last time,
+and if that no longer matches, it can load and make no sound at all. In FL it's
+right-click the plugin, Refresh plugin properties.
 
 ## Using it
 
-- **The lever** — new random sound. That's the whole product. The reels drop one
-  at a time and take about a second and a half to land, so the lever locks out
-  for two seconds while you watch. Three of a kind flashes; three sevens flash
-  gold and hold.
-- **Keyboard** — click it, or play a MIDI keyboard.
-- **CHAOS** — takes the guard rails off. Most rolls are ugly, some are gold.
-- **SAVE / LOAD** — SAVE keeps the current sound; LOAD opens your saved list.
-  Saved sounds live outside the project, so they're there in every session.
-- **NUDGE** — in the coin tray, 1 G a press. Same sound, played slightly
-  differently: the
-  filter shifts a little, envelopes drift, modulation wobbles. Structure stays
-  put, so it's still recognisably the patch you had. Press again to drift
-  further. Turns a near-miss roll into a keeper, and pairs with HOLD.
-- **Nudges are won, not given.** Three matching fruit pay 2, three sevens pay
-  20, shown as **G** in the coin tray. You start with 5. That's what the reels
-  are for.
-- **< / >** — step back and forward through the last 64 rolls.
-- **SEED** — every sound has a 6-digit code. Type someone else's in and press
-  Return to get the exact same sound. Send me the good ones.
-- The meter is output level; it inverts and says CLIP if you're too hot.
+Pull the lever. That's the whole thing.
+
+The reels drop one at a time and take about a second and a half to land, so the
+lever locks for two seconds while you watch them. Three of a kind flashes, and
+three sevens flash gold.
+
+Play it with the on-screen keys or a MIDI keyboard.
+
+CHAOS takes the guard rails off. Most of those rolls are ugly and a few are
+worth keeping.
+
+SAVE keeps the sound you're on and LOAD opens the list. Saved sounds don't live
+in the project file, so they're there in every session.
+
+NUDGE gives you the same sound played slightly differently — the filter moves a
+bit, envelopes drift, modulation wobbles. Nothing structural changes, so it's
+still the patch you had. Press it again to wander further. It costs 1 G, and G
+is what the reels pay out: 2 for three fruit, 20 for three sevens. You start
+with 5.
+
+`<` and `>` step back through the last 64 rolls. The meter is output level and
+goes inverse with CLIP on it if you're too hot.
+
+Every sound is a 6-digit seed. Type one in, press Return, and you get exactly
+that sound — so seeds are worth sharing. Send me the good ones.
 
 ### In a DAW
 
-Nine parameters are automatable and MIDI-learnable: Master, Chaos, **Roll**,
-Seed, Arp, Arp Rate, and trims for filter, reverb and delay.
+Nine parameters are automatable: Master, Chaos, Roll, Seed, Arp, Arp Rate, and
+trims for filter, reverb and delay.
 
-Roll fires on the rising edge, so automating a spike each bar rolls a new sound
-each bar. The trims scale whatever the roll produced rather than replacing it,
-so they stay useful across every sound.
+Roll triggers on the rising edge, so automating a spike every bar gives you a
+new sound every bar. The trims scale whatever the roll came up with instead of
+replacing it, which keeps them useful across every patch.
 
-## Feedback I'd like
+## What I'd like to know
 
-- Clicks, pops or dropouts — tell me your DAW, sample rate and buffer size.
-- Rolls that come out silent, or so loud they pin the meter.
-- How many pulls before it stops surprising you.
-- Seeds of anything you liked.
+Clicks, pops or dropouts, and which DAW, sample rate and buffer size. Rolls that
+come out silent, or loud enough to pin the meter. How many pulls it takes before
+it stops surprising you. And seeds of anything you liked.
 
 ---
 
 ## Developer notes
 
-### Build
+Build:
 
 ```sh
 cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j16
 ```
 
-JUCE 8.0.4 is fetched by CMake. Targets: `GambleSynth_Standalone`,
-`GambleSynth_VST3`, and `RenderTest` (headless tests + audition tool).
-
-Windows builds and the installer are produced by CI — see
+CMake fetches JUCE 8.0.4. The targets are the standalone, the VST3, and
+`RenderTest`, which is both the test suite and a way to audition rolls without
+opening a DAW. Windows builds and the installer come from CI — see
 `.github/workflows/build-windows.yml` and `installer/GambleSynth.iss`. The
-version comes from `project(GambleSynth VERSION ...)` in CMakeLists.txt.
+version number lives in CMakeLists.txt.
 
-### Hidden dev mode
-
-Type **777** into the seed box and press Return: unlocks every patch parameter
-as a live slider, plus the five HOLD reels which keep part of a sound while the
-lever re-rolls the rest. Type 777 again to leave.
+Type 777 in the seed box for dev mode: every patch parameter as a live slider,
+the five HOLD reels, and a readout of what the host is actually doing. 777 again
+to leave.
 
 ### Tests
 
-`RenderTest` is the test suite. Each mode prints PASS/FAIL and exits non-zero on
-failure.
+Each mode prints PASS/FAIL and exits non-zero if it fails.
 
 ```sh
 build/RenderTest_artefacts/Release/RenderTest <mode>
 ```
 
-| Mode | Checks |
-| --- | --- |
-| *(no args, or a number)* | renders N rolls to `gamble_render.wav` |
-| `clicktest` | per-stage click scan, voice stealing, roll-cut leftover |
-| `fxtest` | every effect against a dry render |
-| `filtertest` | 5 filter models × 2/4 pole × LP/BP/HP |
-| `monotest` | mono / legato / glide |
-| `synctest` | tempo-synced delay and gate against a fake host |
-| `aliastest` | inharmonic energy with and without 2× oversampling |
-| `wttest` | wavetable aliasing against the band-limited saw |
-| `addtest` | plucked string, chord unison, noise colours |
-| `arptest` | arpeggiator timing, overlap, note release |
-| `locktest` | HOLD reels, output meter, state round-trip |
-| `libtest` | saved sounds persist across instances |
-| `paramtest` | host parameters, roll edge-triggering, state |
-| `devtest` | dev panel, live edits, window shape |
-| `hosttest` | bus layouts, sample rates, oversized blocks |
-| `fruittest` | reel lottery odds |
-| `varietytest` | 40 pulls: no repeats, no duds, seeds still 1:1 |
-| `similaritytest` | how distinct consecutive rolls actually are |
-| `perftest` | worst-case CPU |
-| `cputest` | per-roll CPU, ranked, with what each patch has switched on |
-| `uishot` | renders the editor to PNG without a display |
+Audio: `clicktest` (discontinuities, voice stealing, roll-cut leftovers),
+`fxtest`, `filtertest` (all 24 model/pole/type combinations), `monotest`,
+`synctest`, `aliastest`, `wttest`, `addtest` (string, chords, noise colours),
+`arptest`.
 
-### Roadmap
+Behaviour: `locktest`, `libtest`, `paramtest`, `devtest`, `hosttest` (bus
+layouts, sample rates, oversized blocks), `fruittest`, `nudgetest`.
 
-`IDEAS.md`.
+Judgement calls: `varietytest` (40 pulls, no repeats, no duds, seeds still map
+1:1), `similaritytest`, `perftest`, `cputest` (per-roll cost, ranked, with what
+each patch has switched on), `uishot` (renders the editor to a PNG headlessly).
+
+Run with no arguments, or a number, to render that many rolls to a wav.
+
+The roadmap is in `IDEAS.md`.
