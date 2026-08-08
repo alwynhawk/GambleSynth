@@ -189,6 +189,7 @@ private:
             case Perc:  makePerc (p);  p.archetypeName = "Perc";  break;
             default:    makeBrass (p); p.archetypeName = "Brass"; break;
         }
+        borrowFromAnother (p, archetype);
         applyModifier (p);
         loosen (p);
         finaliseModulation (p, false);
@@ -288,6 +289,55 @@ private:
             const int which = chance (0.6f) ? 1 : 2;
             p.osc[which].decay = f (0.01f, 0.35f);
         }
+    }
+
+    // Occasionally build a second archetype and transplant one section of it.
+    // A bell's envelope on a bass, an organ's effects on a pluck — combinations
+    // no single recipe produces, and the cheap way to get what a trait-slot
+    // rewrite was supposed to deliver.
+    //
+    // Only one section moves, so the host archetype still decides most of the
+    // sound. The sections are the same five the HOLD reels use, which already
+    // know how to copy one part of a patch without disturbing the rest.
+    void borrowFromAnother (Patch& p, int hostArchetype)
+    {
+        if (! chanceW (0.12f))
+            return;
+
+        int other = i (0, NumArchetypes - 2);
+        if (other >= hostArchetype) ++other;      // anything but the host
+
+        Patch donor;
+        setThreeOsc (donor, 2, 2, 0);
+        donor.master = f (0.7f, 0.85f);
+
+        switch (other)
+        {
+            case Pad:   makePad (donor);   break;
+            case Pluck: makePluck (donor); break;
+            case Bass:  makeBass (donor);  break;
+            case Lead:  makeLead (donor);  break;
+            case Bell:  makeBell (donor);  break;
+            case Stab:  makeStab (donor);  break;
+            case Keys:  makeKeys (donor);  break;
+            case Organ: makeOrgan (donor); break;
+            case Drone: makeDrone (donor); break;
+            case Vox:   makeVox (donor);   break;
+            case Perc:  makePerc (donor);  break;
+            default:    makeBrass (donor); break;
+        }
+
+        // Weighted away from the oscillators: borrowing those replaces what the
+        // sound is made of rather than colouring it, and the host archetype
+        // stops meaning anything. Envelope and effects transplant best.
+        const float r = f (0.0f, 1.0f);
+        const int reel = r < 0.30f ? ReelEnv
+                       : r < 0.55f ? ReelFx
+                       : r < 0.78f ? ReelFilter
+                       : r < 0.92f ? ReelMod
+                                   : ReelOsc;
+
+        copyReel (p, donor, reel);
     }
 
     // A plucked string is its own instrument rather than a layer, so when one
@@ -845,46 +895,71 @@ private:
         setThreeOsc (p, 2, chance (0.5f) ? 3 : 2, 0);
         p.osc[2].semi = -12;                 // sub
         p.osc[0].fine = f (-2.0f, 2.0f);
-        p.ampA = f (0.001f, 0.01f); p.ampD = f (0.1f, 0.4f); p.ampS = f (0.5f, 0.9f); p.ampR = f (0.05f, 0.2f);
-        p.filterType = 0;
-        p.cutoff = f (200.f, 700.f);
-        p.filterEnvAmt = f (0.2f, 0.6f);
-        p.modA = 0.002f; p.modD = f (0.08f, 0.3f); p.modS = f (0.1f, 0.4f);
-        p.resonance = f (0.15f, 0.4f);
-        p.reverbMix = f (0.0f, 0.12f); p.reverbSize = 0.3f;
-        p.delayMix = 0.0f;
-        p.stereoWidth = f (0.1f, 0.35f); p.chorusMix = f (0.0f, 0.15f);      // tight & centred = punch
+        // Two rolls of Bass were closer to each other than two rolls of
+        // anything else (0.387 against 0.504 across the whole engine), so the
+        // ranges here are wider than a bass strictly needs. What keeps it a
+        // bass is the sub, the short attack and the low fundamental — none of
+        // which the width below touches.
+        p.ampA = f (0.001f, 0.03f); p.ampD = f (0.06f, 0.9f);
+        p.ampS = f (0.25f, 0.95f);  p.ampR = f (0.04f, 0.5f);
+        p.filterType = chance (0.15f) ? 1 : 0;          // occasionally band-pass
+        p.cutoff = f (140.f, 1500.f);
+        p.filterEnvAmt = f (0.1f, 0.9f);
+        p.modA = f (0.001f, 0.02f); p.modD = f (0.05f, 0.6f); p.modS = f (0.05f, 0.6f);
+        p.resonance = f (0.05f, 0.65f);
+        p.reverbMix = chance (0.25f) ? f (0.1f, 0.3f) : f (0.0f, 0.12f);
+        p.reverbSize = f (0.2f, 0.5f);
+        p.delayMix = chance (0.2f) ? f (0.08f, 0.25f) : 0.0f;
+        p.delayTime = f (0.12f, 0.3f); p.delayFb = f (0.15f, 0.4f);
+        p.stereoWidth = f (0.05f, 0.45f); p.chorusMix = f (0.0f, 0.3f);
         if (chance (0.3f)) { p.oscMode = 3; p.fmAmount = f (0.15f, 0.45f);
                             setRatio (p.osc[1], f (1.4f, 3.2f)); }                  // FM growl
         else if (chance (0.3f)) { p.oscMode = 1; p.fmAmount = f (0.3f, 0.6f); }                 // ring dirt
-        p.unisonVoices = 1;                                                    // tight = punch
-        p.subWave = chance (0.4f) ? 3 : 0; p.subLevel = f (0.3f, 0.6f); p.noiseLevel = f (0.0f, 0.04f);
-        p.velToAmp = f (0.2f, 0.5f); p.velToFilter = f (0.3f, 0.6f);
+
+        // Mostly tight and centred, because that is what makes a bass punch,
+        // but a detuned one is a different animal and worth landing on.
+        p.unisonVoices = chance (0.2f) ? i (2, 3) : 1;
+        p.unisonDetune = f (3.0f, 12.0f);
+
+        p.subWave = chance (0.4f) ? 3 : 0; p.subLevel = f (0.2f, 0.75f);
+        p.noiseLevel = chance (0.2f) ? f (0.02f, 0.12f) : f (0.0f, 0.04f);
+        p.velToAmp = f (0.1f, 0.6f); p.velToFilter = f (0.2f, 0.8f);
         if (chance (0.6f)) { p.voiceMode = chance (0.5f) ? 1 : 2; p.glideTime = chance (0.6f) ? glideAmount() : 0.0f; }
-        pickFilter (p, 0.35f, 0.25f, 0.0f, 0.0f);
-        p.drive = f (0.15f, 0.45f); p.compAmount = f (0.2f, 0.5f);
-        pickFx (p, 0.05f, 0.05f, 0.15f, 0.15f);   // ladder weight + acid
+        pickFilter (p, 0.35f, 0.25f, 0.05f, 0.08f);
+        p.drive = f (0.05f, 0.7f); p.compAmount = f (0.1f, 0.6f);
+        pickFx (p, 0.08f, 0.08f, 0.2f, 0.2f);   // ladder weight + acid
     }
 
     void makeLead (Patch& p)
     {
         setThreeOsc (p, 2, 2, chance (0.5f) ? 3 : 2);
-        p.ampA = f (0.01f, 0.15f); p.ampD = f (0.1f, 0.3f); p.ampS = f (0.6f, 0.9f); p.ampR = f (0.15f, 0.5f);
-        p.filterType = 0;
-        p.cutoff = f (1200.f, 4500.f);
-        p.filterEnvAmt = f (0.1f, 0.4f);
-        motion (p, ModPitch, f (4.0f, 7.0f), f (0.15f, 0.45f));   // vibrato
-        p.reverbMix = f (0.15f, 0.35f); p.reverbSize = f (0.4f, 0.7f);
-        p.delayMix = chance (0.7f) ? f (0.2f, 0.4f) : 0.0f; p.delayTime = f (0.25f, 0.5f); p.delayFb = f (0.3f, 0.5f);
+        // Same story as Bass: 0.430 against 0.504, so the ranges open up. A
+        // lead is defined by sitting on top and being played one note at a
+        // time, not by a narrow filter range or a fixed amount of vibrato.
+        p.ampA = f (0.005f, 0.35f); p.ampD = f (0.06f, 0.7f);
+        p.ampS = f (0.35f, 0.95f);  p.ampR = f (0.1f, 1.2f);
+        p.filterType = chance (0.15f) ? 1 : 0;
+        p.cutoff = f (700.f, 9000.f);
+        p.filterEnvAmt = f (-0.2f, 0.8f);
+
+        // Vibrato most of the time; sometimes something else is moving instead.
+        if (chance (0.7f))  motion (p, ModPitch, f (3.0f, 8.0f), f (0.08f, 0.6f));
+        else                motion (p, chance (0.5f) ? ModCutoff : ModPulseWidth,
+                                    f (0.15f, 6.0f), f (0.2f, 0.7f));
+
+        p.reverbMix = f (0.05f, 0.55f); p.reverbSize = f (0.25f, 0.85f);
+        p.delayMix = chance (0.7f) ? f (0.12f, 0.5f) : 0.0f;
+        p.delayTime = f (0.12f, 0.6f); p.delayFb = f (0.2f, 0.6f);
         if (chance (0.4f)) { p.oscMode = 2; p.fmAmount = f (0.15f, 0.5f); } // sync lead
-        p.unisonVoices = chance (0.5f) ? 3 : 5; p.unisonDetune = f (6.0f, 16.0f);
-        p.subLevel = f (0.0f, 0.15f); p.noiseLevel = 0.0f;
-        p.pulseWidth = f (0.35f, 0.65f); p.pwmDepth = f (0.1f, 0.4f);
-        p.velToAmp = f (0.2f, 0.5f); p.velToFilter = f (0.2f, 0.5f);
+        p.unisonVoices = chance (0.25f) ? 1 : i (2, 6);
+        p.unisonDetune = f (2.0f, 26.0f);
+        p.subLevel = f (0.0f, 0.35f); p.noiseLevel = chance (0.2f) ? f (0.01f, 0.08f) : 0.0f;
+        p.pulseWidth = f (0.2f, 0.8f); p.pwmDepth = f (0.0f, 0.7f);
+        p.velToAmp = f (0.1f, 0.6f); p.velToFilter = f (0.1f, 0.7f);
         if (chance (0.5f)) { p.voiceMode = chance (0.4f) ? 1 : 2; p.glideTime = chance (0.7f) ? glideAmount() : 0.0f; }
-        pickFilter (p, 0.30f, 0.20f, 0.08f, 0.0f);
-        p.drive = f (0.1f, 0.4f); p.compAmount = f (0.1f, 0.35f);
-        pickFx (p, 0.20f, 0.18f, 0.08f, 0.12f);
+        pickFilter (p, 0.30f, 0.20f, 0.10f, 0.05f);
+        p.drive = f (0.03f, 0.65f); p.compAmount = f (0.05f, 0.5f);
+        pickFx (p, 0.25f, 0.22f, 0.12f, 0.16f);
     }
 
     void makeBell (Patch& p)

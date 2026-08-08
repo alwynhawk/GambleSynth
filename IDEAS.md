@@ -36,9 +36,13 @@ audibility before you hear them, and won't repeat the last two archetypes.
 
 - Rarity tiers. Weight rolls common / rare / jackpot and show it on the pull. Ties variety to
   the theme and gives people something worth screenshotting.
-- Trait slots. Replace whole-archetype recipes with independent slots (amp shape, timbre
-  source, filter character, motion, space) plus a compatibility matrix. Keys already works
-  this way and it was the single biggest variety win so far.
+- [x] Cross-archetype borrowing. 12% of rolls build a second archetype and transplant one
+      of the five HOLD sections from it — a bell's envelope on a bass, an organ's effects on
+      a pluck. Weighted away from the oscillators, since borrowing those replaces what the
+      sound is made of rather than colouring it.
+- [x] Loosen Bass and Lead. They measured 0.387 and 0.430 mean spectral distance against
+      0.504 across the whole engine, i.e. two Bass rolls were more alike than two rolls
+      picked at random. Now 0.454 and 0.506.
 - Chaos intensity. A dial from tame to unhinged instead of a switch.
 - [x] Nudge. A slightly different version of the current sound, bought with credits won on
       the reels: 2 for three fruit, 20 for three sevens, 5 to start. Continuous values drift,
@@ -71,6 +75,16 @@ audibility before you hear them, and won't repeat the last two archetypes.
       rolls engage something nonlinear, and of the ones that do not, none are expensive.
 
 ## Declined
+
+- Trait slots (archetypes as independent slots plus a compatibility matrix). Measured
+  instead of assumed: two rolls inside Pluck (0.544) or Keys (0.521) were already further
+  apart than two rolls drawn from the whole engine (0.504). The clustering this was meant
+  to break had mostly gone — the modulation overhaul, modifiers, loosen() and wavetables
+  did it. And a compatibility matrix is an archetype system in another form: fully
+  independent slots mostly produce mush, and the rules you add to stop that are the
+  archetypes again, spread across a table instead of readable in one place. What the
+  numbers did justify was loosening the two tight archetypes and letting rolls borrow a
+  section from each other, both of which are done.
 
 - Record last roll to WAV.
 - Factory presets. The rolls are the product.
