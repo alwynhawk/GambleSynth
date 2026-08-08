@@ -1,0 +1,65 @@
+Third-party components in GambleSynth
+
+The synthesis engine in GambleSynth is written from scratch — the oscillators,
+filters, envelopes, effects and the randomiser are our own code. What follows is
+everything else the software is built on.
+
+--------------------------------------------------------------------------------
+JUCE 8
+--------------------------------------------------------------------------------
+
+Application framework: audio device handling, plugin wrappers, user interface,
+file and graphics support.
+
+Copyright (c) Raw Material Software Limited.
+
+The JUCE framework modules are dual-licensed under the AGPLv3 and the commercial
+JUCE licence. GambleSynth is distributed under the commercial JUCE licence.
+
+  https://juce.com/legal/juce-8-licence/
+
+JUCE is provided "as is" without any warranty, and all warranties, whether
+expressed or implied, including warranty of merchantability or fitness for a
+particular purpose, are disclaimed.
+
+--------------------------------------------------------------------------------
+VST3 SDK
+--------------------------------------------------------------------------------
+
+VST is a trademark of Steinberg Media Technologies GmbH, registered in Europe
+and other countries.
+
+Copyright (c) 2024 Steinberg Media Technologies GmbH. All rights reserved.
+
+Used under the Steinberg VST3 licence.
+
+  https://www.steinberg.net/en/company/developers.html
+
+--------------------------------------------------------------------------------
+Components within JUCE
+--------------------------------------------------------------------------------
+
+JUCE bundles the following, each under its own licence. Only those actually
+linked into GambleSynth are listed.
+
+  zlib          zlib licence
+  pnglib        zlib licence
+  jpeglib       Independent JPEG Group licence
+  HarfBuzz      Old MIT licence
+  SheenBidi     Apache 2.0
+  FLAC          BSD
+  Ogg Vorbis    BSD
+
+Full licence texts are in the JUCE distribution under modules/, and JUCE's own
+LICENSE.md lists every dependency.
+
+--------------------------------------------------------------------------------
+Artwork and sound
+--------------------------------------------------------------------------------
+
+The cabinet artwork, the lever, the fruit symbols and the icon were drawn for
+this project and are ours.
+
+No sampled audio ships with GambleSynth. Every wavetable is generated at startup
+from harmonic recipes in code, so there is no sample library and no sample
+licence to observe.

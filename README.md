@@ -107,4 +107,9 @@ keeps turning up and the question is whether that's bad luck or the odds.
 
 Run with no arguments, or a number, to render that many rolls to a wav.
 
-The roadmap is in `IDEAS.md`.
+The roadmap is in `IDEAS.md`. Licence terms are in `LICENSE.txt` and the
+attributions in `THIRD-PARTY.txt`; both ship with the installer.
+
+Two upstream obligations before selling: JUCE 8 is dual-licensed AGPLv3 or
+commercial, so a commercial licence is required to ship this closed-source, and
+Steinberg require a signed VST3 licence agreement before a VST3 is published.

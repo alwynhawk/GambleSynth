@@ -37,6 +37,8 @@ ArchitecturesInstallIn64BitMode=x64compatible
 ArchitecturesAllowed=x64compatible
 UninstallDisplayName={#AppName} {#AppVersion}
 SetupIconFile=..\icon\gamblesynth.ico
+; Shown as a page in the installer, so nobody can say they never saw it.
+LicenseFile=..\LICENSE.txt
 UninstallDisplayIcon={app}\{#AppExeName}
 ; Upgrading in place. Without these, Inno recognises the existing install by
 ; AppId and refuses rather than replacing it — every update would mean
@@ -91,6 +93,10 @@ Source: "..\dist\GambleSynth\{#AppExeName}"; \
 
 Source: "..\dist\GambleSynth\README.md"; \
     DestDir: "{app}"; DestName: "README.txt"; Flags: ignoreversion isreadme
+
+; The licence and attributions land next to the app, not only in the wizard.
+Source: "..\LICENSE.txt";     DestDir: "{app}"; Flags: ignoreversion
+Source: "..\THIRD-PARTY.txt"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#AppName}";                  Filename: "{app}\{#AppExeName}"; Components: standalone

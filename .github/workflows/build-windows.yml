@@ -63,6 +63,7 @@ jobs:
           cp -r build/GambleSynth_artefacts/Release/VST3/GambleSynth.vst3 dist/GambleSynth/
           cp build/GambleSynth_artefacts/Release/Standalone/GambleSynth.exe dist/GambleSynth/
           cp README.md dist/GambleSynth/
+          cp LICENSE.txt THIRD-PARTY.txt dist/GambleSynth/
 
       # The version comes from CMakeLists so there is one place to bump it.
       - name: Read the version

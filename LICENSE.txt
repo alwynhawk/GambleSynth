@@ -1,0 +1,112 @@
+GambleSynth End User Licence Agreement
+
+Version 1.0
+
+This is the agreement between you and HWCDealer ("we", "us") covering your use
+of GambleSynth ("the software"). By installing or using the software you accept
+it. If you don't accept it, don't install the software, and ask for a refund.
+
+1. What you get
+
+We grant you a personal, non-exclusive, worldwide licence to use the software
+for as long as you like. You may install it on any computers you own or
+personally control, and you may keep backup copies. One purchase covers one
+person.
+
+2. The sounds you make are yours
+
+Anything you make with the software belongs to you. Records, samples, presets,
+soundtracks, videos, anything. You owe us nothing, you don't need to credit us,
+and there are no royalties. Sell it, licence it, give it away — your call.
+
+This applies to the audio you produce. It doesn't let you redistribute the
+software itself.
+
+3. What you may not do
+
+Don't share, sell, rent, lend or give away the software or your download link.
+Don't put it on a file sharing site or bundle it into anything you distribute.
+
+Don't try to work around, remove or disable any part of the software that
+controls access to it.
+
+Don't take the software apart to make a competing product from it. You may
+otherwise reverse engineer it to the extent the law where you live says you can,
+regardless of anything in this agreement.
+
+Don't remove or alter our name or these terms from anything you pass on.
+
+4. Who owns it
+
+We do. Buying it buys you the licence described here, not the software itself.
+The name GambleSynth, the artwork and the code stay ours.
+
+5. Updates
+
+We may release updates. We may stop. Nothing here obliges us to make the
+software work with future operating systems, hosts or hardware, and nothing
+obliges us to keep it for sale.
+
+6. No warranty
+
+The software is provided as is. We don't promise it is free of faults, that it
+will suit what you want it for, that it will work with your particular setup, or
+that it will keep running without interruption. To the fullest extent the law
+allows, we disclaim all warranties, express or implied, including
+merchantability and fitness for a particular purpose.
+
+7. Limits on what we owe you
+
+To the fullest extent the law allows, we are not liable for lost work, lost
+recordings, lost profits, lost time, or any indirect or consequential loss.
+Where we are liable, our total liability is limited to what you paid for the
+software.
+
+Back up your projects. Any audio software can crash, and this one is sold for
+five dollars.
+
+Nothing here limits liability that cannot legally be limited, including for
+death or personal injury caused by negligence, or for fraud.
+
+8. Your statutory rights
+
+If you bought this as a consumer, you have rights under your local consumer law
+that this agreement does not affect. Where those rights conflict with anything
+here, those rights win.
+
+9. Refunds
+
+Ask. If the software doesn't work for you, we would rather refund you than have
+you keep something you can't use. Refunds are handled by whoever sold it to you,
+so their process applies.
+
+10. Ending it
+
+This licence ends if you break the terms in section 3. If it ends, stop using
+the software and delete your copies. Sections 4, 6 and 7 survive.
+
+11. Other software inside it
+
+The software includes third-party components under their own licences. Those
+are listed in THIRD-PARTY.txt, which ships with the software. Where a
+third-party licence gives you rights this agreement doesn't, that licence wins
+for that component.
+
+12. Law
+
+This agreement is governed by the laws of [YOUR COUNTRY OR STATE], and the
+courts there deal with any dispute. If you are a consumer, this doesn't take
+away your right to bring a claim where you live.
+
+13. The whole agreement
+
+This is the entire agreement about the software and replaces anything said
+before. If a court finds part of it unenforceable, the rest still stands.
+
+14. Contact
+
+[YOUR SUPPORT EMAIL]
+
+---
+
+HWCDealer
