@@ -213,6 +213,10 @@ private:
         loosen (p);
         finaliseModulation (p, false);
 
+        // After everything that can create it: loosen() re-randomises the very
+        // parameters this softens, so running it earlier let the zap come back.
+        thinOutTheZap (p);
+
         rollWavetable (p);
         rollString (p);
         rollChord (p);
@@ -307,6 +311,29 @@ private:
         {
             const int which = chance (0.6f) ? 1 : 2;
             p.osc[which].decay = f (0.01f, 0.35f);
+        }
+    }
+
+    // A resonant filter driven hard by a fast envelope is a laser zap, and it
+    // was landing on one roll in seven — often enough to become the sound the
+    // engine is known for rather than one of the things it can do. The three
+    // ingredients are high resonance, a strong filter envelope and a short mod
+    // decay; this breaks up one of them most of the time it sees all three, so
+    // the zap still happens, just not constantly.
+    void thinOutTheZap (Patch& p)
+    {
+        const bool zap = p.resonance > 0.45f
+                      && std::abs (p.filterEnvAmt) > 0.4f
+                      && p.modD < 0.4f;
+
+        if (! zap || chance (0.28f))     // left alone about a quarter of the time
+            return;
+
+        switch (i (0, 2))
+        {
+            case 0:  p.resonance = f (0.08f, 0.4f);            break;  // less whistle
+            case 1:  p.filterEnvAmt *= f (0.15f, 0.5f);        break;  // less sweep
+            default: p.modD = f (0.45f, 1.6f);                 break;  // slower, so it opens rather than snaps
         }
     }
 

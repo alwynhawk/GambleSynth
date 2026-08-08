@@ -101,6 +101,10 @@ Judgement calls: `varietytest` (40 pulls, no repeats, no duds, seeds still map
 1:1), `similaritytest`, `perftest`, `cputest` (per-roll cost, ranked, with what
 each patch has switched on), `uishot` (renders the editor to a PNG headlessly).
 
+`censustest` is a different kind of tool: it rolls a few hundred patches and
+counts how often notable traits actually occur. Useful when a particular sound
+keeps turning up and the question is whether that's bad luck or the odds.
+
 Run with no arguments, or a number, to render that many rolls to a wav.
 
 The roadmap is in `IDEAS.md`.

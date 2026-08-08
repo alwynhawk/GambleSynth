@@ -34,6 +34,8 @@ audibility before you hear them, and won't repeat the last two archetypes.
 
 **Sound**
 
+- [x] Thin out the laser zap. A resonant filter driven hard by a fast envelope was landing
+      on one roll in seven, often enough to be the sound the engine is known for. Now 3.5%.
 - Loosen Vox, Drone, Brass and Stab. Measured tightest now (0.407, 0.407, 0.413, 0.416
   against 0.534 across the engine) once the per-archetype measurement was fixed to force an
   archetype instead of filtering rolls by name.

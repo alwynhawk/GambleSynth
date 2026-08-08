@@ -1779,6 +1779,103 @@ std::cout << "host lifecycle: " << (allOk ? "PASS" : "FAIL") << std::endl;
         return 0;
     }
 
+    // --- Trait census. When a particular sound keeps turning up, the useful
+    //     question is how often the thing that makes it is actually rolled. ---
+    bool censusTest = false;
+    for (int a = 1; a < argc; ++a) if (juce::String (argv[a]) == "censustest") censusTest = true;
+    if (censusTest)
+    {
+        Randomizer r;
+        const int rolls = 600;
+
+        int pitchEnv = 0, steepPitchEnv = 0, laser = 0;
+        int pitchLfo = 0, fastPitchLfo = 0;
+        int oscDecay = 0, hardAttack = 0;
+
+        for (unsigned seed = 1; seed <= (unsigned) rolls; ++seed)
+        {
+            const Patch p = r.roll (seed);
+
+            const bool envToPitch = (p.envDest == ModPitch);
+            const bool deep  = std::abs (p.envAmount) > 0.45f;
+            const bool steep = p.modD < 0.25f;
+
+            if (envToPitch) ++pitchEnv;
+            if (envToPitch && deep && steep) ++steepPitchEnv;
+
+            bool lfoPitch = false, lfoFast = false;
+            for (int k = 0; k < Patch::NumMods; ++k)
+                if (p.mod[k].dest == ModPitch && p.mod[k].depth > 0.15f)
+                {
+                    lfoPitch = true;
+                    if (p.mod[k].rate > 8.0f) lfoFast = true;
+                }
+            if (lfoPitch) ++pitchLfo;
+            if (lfoFast)  ++fastPitchLfo;
+
+            bool transient = false;
+            for (const auto& o : p.osc)
+                if (o.decay > 0.001f && o.decay < 0.2f) transient = true;
+            if (transient) ++oscDecay;
+
+            const bool sharp = p.ampA < 0.02f && p.ampD < 0.35f;
+            if (sharp) ++hardAttack;
+
+            // The one being asked about: a hard attack with the pitch diving.
+            if (sharp && ((envToPitch && deep && steep) || lfoFast))
+                ++laser;
+        }
+
+        // The pitch-envelope theory measured at almost nothing, so these are
+        // the other ways an engine like this makes a zap.
+        int resoSweep = 0, resoHigh = 0, fmZap = 0, highOct = 0, ringShort = 0;
+        int brightShort = 0, combShort = 0;
+
+        for (unsigned seed = 1; seed <= (unsigned) rolls; ++seed)
+        {
+            const Patch p = r.roll (seed);
+            const bool sharp = p.ampA < 0.02f && p.ampD < 0.35f;
+
+            if (p.resonance > 0.5f) ++resoHigh;
+
+            // A resonant filter driven hard by a fast envelope is the classic
+            // zap, whatever the oscillators are doing.
+            if (p.resonance > 0.45f && std::abs (p.filterEnvAmt) > 0.4f && p.modD < 0.4f)
+                ++resoSweep;
+
+            if (p.oscMode == 3 && sharp) ++fmZap;
+            if (p.oscMode == 1 && sharp) ++ringShort;
+
+            bool up = false;
+            for (const auto& o : p.osc)
+                if (o.semi >= 12 && o.level > 0.2f) up = true;
+            if (up && sharp) ++highOct;
+
+            if (sharp && p.cutoff > 4000.0f) ++brightShort;
+            if (sharp && p.filterModel == 4) ++combShort;
+        }
+
+        auto pct = [rolls] (int n) { return juce::String (100.0 * n / rolls, 1) + "%"; };
+
+        std::cout << rolls << " rolls" << std::endl;
+        std::cout << "  envelope -> pitch            " << pct (pitchEnv) << std::endl;
+        std::cout << "    ...deep and steep with it  " << pct (steepPitchEnv) << std::endl;
+        std::cout << "  LFO -> pitch                 " << pct (pitchLfo) << std::endl;
+        std::cout << "    ...faster than 8 Hz        " << pct (fastPitchLfo) << std::endl;
+        std::cout << "  transient osc layer          " << pct (oscDecay) << std::endl;
+        std::cout << "  hard attack (A<20ms, D<350)  " << pct (hardAttack) << std::endl;
+        std::cout << "  hard attack + pitch dive     " << pct (laser) << std::endl;
+        std::cout << std::endl << "other ways to make a zap:" << std::endl;
+        std::cout << "  resonance > 0.5              " << pct (resoHigh) << std::endl;
+        std::cout << "  RESONANT SWEEP, FAST ENV     " << pct (resoSweep) << std::endl;
+        std::cout << "  FM + hard attack             " << pct (fmZap) << std::endl;
+        std::cout << "  ring mod + hard attack       " << pct (ringShort) << std::endl;
+        std::cout << "  octave-up osc + hard attack  " << pct (highOct) << std::endl;
+        std::cout << "  bright (>4k) + hard attack   " << pct (brightShort) << std::endl;
+        std::cout << "  comb filter + hard attack    " << pct (combShort) << std::endl;
+        return 0;
+    }
+
     // --- Worst-case CPU: 16 held notes, 7-voice unison each, whole FX rack on,
     //     measured with and without oversampling. ---
     bool perfTest = false;
